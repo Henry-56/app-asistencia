@@ -1,0 +1,139 @@
+// Prisma Schema para Sistema de Asistencias
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  COLABORADOR
+  PRACTICANTE
+  ADMIN
+}
+
+enum QRType {
+  IN
+  OUT
+}
+
+enum ShiftType {
+  AM
+  PM
+}
+
+enum AttendanceStatus {
+  PRESENTE
+  TARDE
+  FALTA
+}
+
+// Modelos
+
+model User {
+  id            String   @id @default(uuid())
+  employeeCode  String   @unique @map("employee_code")
+  loginCode     String   @unique @map("login_code") // Código de 4 caracteres para login
+  email         String?  // Opcional (sin @unique para permitir múltiples NULL)
+  fullName      String   @map("full_name")
+  role          UserRole @default(COLABORADOR)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  attendances   AttendanceRecord[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model Location {
+  id           Int      @id @default(autoincrement())
+  name         String
+  address      String?
+  latitude     Decimal  @db.Decimal(10, 8)
+  longitude    Decimal  @db.Decimal(11, 8)
+  radiusMeters Int      @default(100) @map("radius_meters")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  qrCodes      QRCode[]
+
+  @@map("locations")
+}
+
+model QRCode {
+  id          Int       @id @default(autoincrement())
+  qrToken     String    @unique @default(uuid()) @map("qr_token")
+  qrDate      DateTime  @db.Date @map("qr_date")
+  qrType      QRType    @map("qr_type")
+  shift       ShiftType
+  locationId  Int       @map("location_id")
+  validFrom   DateTime  @map("valid_from")
+  validUntil  DateTime  @map("valid_until")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  location    Location  @relation(fields: [locationId], references: [id])
+  attendances AttendanceRecord[]
+  auditLogs   AuditLog[]
+
+  @@unique([qrDate, qrType, shift])
+  @@index([qrToken])
+  @@index([qrDate, shift])
+  @@map("qr_codes")
+}
+
+model AttendanceRecord {
+  id                   Int              @id @default(autoincrement())
+  userId               String           @map("user_id")
+  qrId                 Int?             @map("qr_id")
+  attendanceDate       DateTime         @db.Date @map("attendance_date")
+  shift                ShiftType
+  checkInTime          DateTime?        @map("check_in_time")
+  checkInLat           Decimal?         @db.Decimal(10, 8) @map("check_in_lat")
+  checkInLng           Decimal?         @db.Decimal(11, 8) @map("check_in_lng")
+  checkInAccuracyM     Decimal?         @db.Decimal(6, 2) @map("check_in_accuracy_m")
+  checkOutTime         DateTime?        @map("check_out_time")
+  checkOutLat          Decimal?         @db.Decimal(10, 8) @map("check_out_lat")
+  checkOutLng          Decimal?         @db.Decimal(11, 8) @map("check_out_lng")
+  checkOutAccuracyM    Decimal?         @db.Decimal(6, 2) @map("check_out_accuracy_m")
+  lateMinutes          Int              @default(0) @map("late_minutes")
+  discountAmount       Decimal          @default(0.00) @db.Decimal(6, 2) @map("discount_amount")
+  status               AttendanceStatus @default(PRESENTE)
+  discountApplied      Boolean          @default(false) @map("discount_applied")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  user                 User             @relation(fields: [userId], references: [id])
+  qr                   QRCode?          @relation(fields: [qrId], references: [id])
+
+  @@unique([userId, attendanceDate, shift])
+  @@index([attendanceDate, shift])
+  @@index([userId, attendanceDate])
+  @@map("attendance_records")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     String?  @map("user_id")
+  qrId       Int?     @map("qr_id")
+  action     String
+  reason     String?
+  latitude   Decimal? @db.Decimal(10, 8)
+  longitude  Decimal? @db.Decimal(11, 8)
+  accuracyM  Decimal? @db.Decimal(6, 2) @map("accuracy_m")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User?    @relation(fields: [userId], references: [id])
+  qr         QRCode?  @relation(fields: [qrId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
