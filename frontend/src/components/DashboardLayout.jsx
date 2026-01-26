@@ -7,7 +7,7 @@ export default function DashboardLayout() {
 
     const navItems = [
         { path: '/dashboard', label: 'Inicio', icon: '🏠' },
-        { path: '/dashboard/qr-generator', label: 'Scanner', icon: '📱' },
+        { path: '/dashboard', label: 'Inicio', icon: '🏠' },
         { path: '/dashboard/fixed-qr', label: 'QRs Fijos', icon: '🏁' },
         { path: '/dashboard/users', label: 'Usuarios', icon: '👥' },
         { path: '/dashboard/reports', label: 'Reportes', icon: '📊' },

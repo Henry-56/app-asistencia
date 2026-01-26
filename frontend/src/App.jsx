@@ -80,7 +80,6 @@ function App() {
           }
         >
           <Route index element={<DashboardHome />} />
-          <Route path="qr-generator" element={<QRGeneratorPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="fixed-qr" element={<FixedQRPage />} />

@@ -111,10 +111,19 @@ async function scanQR(req, res) {
 
                 if (!serverTime.isBetween(startWindow, endWindow, null, '[]')) {
                     // Fuera de ventana
+                    // PERO: Si es fixed, tal vez solo queremos loguearlo y rechazar, no decir "Expired".
+                    // "Expired" es 410. Fuera de ventana es 410 también en este código.
+                    // Vamos a cambiar el mensaje para ser más claros.
+
+                    // Comprobar si es demasiado TEMPRANO o demasiado TARDE
+                    const isEarly = serverTime.isBefore(startWindow);
+
                     await logAudit(userId, qr.id, 'SCAN_FAIL', 'OUT_OF_WINDOW', latitude, longitude, accuracy_m, req);
                     return res.status(410).json({
                         error: 'OUT_OF_WINDOW',
-                        message: `Fuera de horario de ${actionType === 'IN' ? 'entrada' : 'salida'}. (${windowCfg.from} - ${windowCfg.until})`
+                        message: isEarly
+                            ? `Aún no es hora de marcar. Inicio: ${windowCfg.from}`
+                            : `El horario de marcación ha terminado. Fin: ${windowCfg.until}`
                     });
                 }
             }
@@ -126,7 +135,7 @@ async function scanQR(req, res) {
             qr.qrType = actionType; // 'IN' or 'OUT'
 
         } else {
-            // Lógica Legacy (Dinámico)
+            // Lógica Legacy (Dinámico) - SOLO si NO es Fixed
             if (user.role === 'PRACTICANTE') {
                 const serverDateStr = serverTime.format('YYYY-MM-DD');
                 const qrDateStr = moment.utc(qr.qrDate).format('YYYY-MM-DD');
@@ -138,17 +147,20 @@ async function scanQR(req, res) {
                     isExpired = true;
                 }
             } else {
+                // Colaboradores / Admin (Dinámico)
                 if (serverTime.isBefore(qr.validFrom) || serverTime.isAfter(qr.validUntil)) {
                     isExpired = true;
                 }
             }
-            if (isExpired) {
-                await logAudit(userId, qr.id, 'SCAN_FAIL', 'QR_EXPIRED', latitude, longitude, accuracy_m, req);
-                return res.status(410).json({
-                    error: 'QR_EXPIRED',
-                    message: 'Código QR expirado o inválido'
-                });
-            }
+        }
+
+        // Check universal expiration (only if determined expired above)
+        if (isExpired) {
+            await logAudit(userId, qr.id, 'SCAN_FAIL', 'QR_EXPIRED', latitude, longitude, accuracy_m, req);
+            return res.status(410).json({
+                error: 'QR_EXPIRED',
+                message: 'Código QR expirado o inválido'
+            });
         }
 
         // 5. Validar accuracy GPS
