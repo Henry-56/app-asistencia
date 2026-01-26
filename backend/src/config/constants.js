@@ -11,10 +11,10 @@ module.exports = {
 
     // Ventanas de escaneo (desde - hasta)
     SCAN_WINDOWS: {
-        IN_AM: { from: '08:45', until: '10:00' },
-        OUT_AM: { from: '12:30', until: '13:30' },
-        IN_PM: { from: '14:45', until: '16:00' },
-        OUT_PM: { from: '18:30', until: '19:30' },
+        IN_AM: { from: '05:00', until: '13:00' },   // Gran tolerancia para entrada AM
+        OUT_AM: { from: '11:00', until: '16:00' },  // Flexibilidad salida AM
+        IN_PM: { from: '12:00', until: '19:00' },   // Solape para entrada PM
+        OUT_PM: { from: '17:00', until: '23:59' },  // Salida PM hasta fin del día
     },
 
     // Tolerancia de tardanza (minutos)
