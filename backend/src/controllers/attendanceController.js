@@ -34,7 +34,7 @@ async function scanQR(req, res) {
             return res.status(400).json({ error: 'INVALID_QR_TOKEN', message: 'Código QR inválido' });
         }
 
-        // 3. Obtener usuario (MOVIDO ANTES para validar reglas por rol)
+        // 3. Obtener usuario
         const user = await prisma.user.findUnique({
             where: { id: userId },
         });
@@ -44,45 +44,111 @@ async function scanQR(req, res) {
             return res.status(403).json({ error: 'USER_INACTIVE', message: 'Usuario inactivo' });
         }
 
-        // 4. Validar ventana de escaneo (Reglas diferenciadas)
+        // --- LÓGICA DE FECHA Y VALIDACIÓN ---
+        let attendanceDate = qr.qrDate; // Default for dynamic
         let isExpired = false;
+        const { SCAN_WINDOWS } = require('../config/constants'); // Import here to ensure we have latest
 
-        if (user.role === 'PRACTICANTE') {
-            // Practicantes: Pueden escanear todo el turno
-            // FIX: Usar strings para comparar fechas y evitar problemas de timezone
-            const serverDateStr = serverTime.format('YYYY-MM-DD');
-            const qrDateStr = moment.utc(qr.qrDate).format('YYYY-MM-DD');
+        // Determinar intención (IN o OUT) basado en si ya marcó entrada
+        // Primero buscamos si existe registro para el día (si es fijo) o para la fecha del QR (si es dinámico)
 
-            const isSameDay = serverDateStr === qrDateStr;
-            const validFromMoment = moment(qr.validFrom).tz(TIMEZONE);
-            const isTooEarly = serverTime.isBefore(validFromMoment);
-
-            console.log('=== DEBUG PRACTICANTE FIX ===');
-            console.log('Server Date:', serverDateStr);
-            console.log('QR Date:', qrDateStr);
-            console.log('Is Same Day?', isSameDay);
-            console.log('Is Too Early?', isTooEarly);
-            console.log('=============================');
-
-            if (!isSameDay || isTooEarly) {
-                isExpired = true;
-            }
-
-        } else {
-            // Colaboradores: Regla estricta (ValidFrom - ValidUntil)
-            if (serverTime.isBefore(qr.validFrom) || serverTime.isAfter(qr.validUntil)) {
-                isExpired = true;
-            }
+        let targetDate = qr.qrDate; // Para dinámico
+        if (qr.isFixed) {
+            targetDate = serverTime.toDate(); // Para fijo es HOY
         }
 
-        if (isExpired) {
-            await logAudit(userId, qr.id, 'SCAN_FAIL', 'QR_EXPIRED', latitude, longitude, accuracy_m, req);
-            return res.status(410).json({
-                error: 'QR_EXPIRED',
-                message: user.role === 'PRACTICANTE'
-                    ? 'Código QR aún no válido para escanear'
-                    : 'Código QR fuera de ventana de escaneo'
+        // Mapear DayOfWeek para Schedule (1=Lunes, 6=Sábado)
+        // moment.isoWeekday(): 1=Monday... 7=Sunday
+        const currentIsoDay = moment(targetDate).tz(TIMEZONE).isoWeekday();
+
+        // Si es FIXED, validamos Horario del Usuario y Ventanas de Tiempo
+        if (qr.isFixed) {
+            // Validar Schedule
+            const schedule = await prisma.userSchedule.findUnique({
+                where: {
+                    userId_dayOfWeek_shift: {
+                        userId: userId,
+                        dayOfWeek: currentIsoDay,
+                        shift: qr.shift
+                    }
+                }
             });
+
+            if (!schedule || !schedule.isActive) {
+                await logAudit(userId, qr.id, 'SCAN_FAIL', 'SCHEDULE_MISMATCH', latitude, longitude, accuracy_m, req);
+                return res.status(403).json({
+                    error: 'SCHEDULE_MISMATCH',
+                    message: 'No tiene turno programado para hoy en este horario.'
+                });
+            }
+
+            // Validar Ventana de Tiempo (IN vs OUT)
+            // Necesitamos saber si estamos intentando entrar o salir.
+            // Check si ya tiene entrada
+            const existingRecord = await prisma.attendanceRecord.findFirst({
+                where: {
+                    userId: userId,
+                    attendanceDate: {
+                        gte: moment(targetDate).tz(TIMEZONE).startOf('day').toDate(),
+                        lte: moment(targetDate).tz(TIMEZONE).endOf('day').toDate(),
+                    },
+                    shift: qr.shift
+                }
+            });
+
+            const actionType = existingRecord ? 'OUT' : 'IN';
+            const windowKey = `${actionType}_${qr.shift}`; // IN_AM, OUT_AM, etc.
+            const windowCfg = SCAN_WINDOWS[windowKey];
+
+            if (!windowCfg) {
+                // Should not happen if constants are correct
+                isExpired = true;
+            } else {
+                const todayStr = moment(targetDate).tz(TIMEZONE).format('YYYY-MM-DD');
+                // Parse window start/end
+                const startWindow = moment.tz(`${todayStr} ${windowCfg.from}`, TIMEZONE);
+                const endWindow = moment.tz(`${todayStr} ${windowCfg.until}`, TIMEZONE);
+
+                if (!serverTime.isBetween(startWindow, endWindow, null, '[]')) {
+                    // Fuera de ventana
+                    await logAudit(userId, qr.id, 'SCAN_FAIL', 'OUT_OF_WINDOW', latitude, longitude, accuracy_m, req);
+                    return res.status(410).json({
+                        error: 'OUT_OF_WINDOW',
+                        message: `Fuera de horario de ${actionType === 'IN' ? 'entrada' : 'salida'}. (${windowCfg.from} - ${windowCfg.until})`
+                    });
+                }
+            }
+
+            // Sobrescribir qrDate con fecha actual para el registro
+            attendanceDate = targetDate;
+
+            // Sobrescribir qrType para lógica posterior
+            qr.qrType = actionType; // 'IN' or 'OUT'
+
+        } else {
+            // Lógica Legacy (Dinámico)
+            if (user.role === 'PRACTICANTE') {
+                const serverDateStr = serverTime.format('YYYY-MM-DD');
+                const qrDateStr = moment.utc(qr.qrDate).format('YYYY-MM-DD');
+                const isSameDay = serverDateStr === qrDateStr;
+                const validFromMoment = moment(qr.validFrom).tz(TIMEZONE);
+                const isTooEarly = serverTime.isBefore(validFromMoment);
+
+                if (!isSameDay || isTooEarly) {
+                    isExpired = true;
+                }
+            } else {
+                if (serverTime.isBefore(qr.validFrom) || serverTime.isAfter(qr.validUntil)) {
+                    isExpired = true;
+                }
+            }
+            if (isExpired) {
+                await logAudit(userId, qr.id, 'SCAN_FAIL', 'QR_EXPIRED', latitude, longitude, accuracy_m, req);
+                return res.status(410).json({
+                    error: 'QR_EXPIRED',
+                    message: 'Código QR expirado o inválido'
+                });
+            }
         }
 
         // 5. Validar accuracy GPS
@@ -90,7 +156,7 @@ async function scanQR(req, res) {
             await logAudit(userId, qr.id, 'SCAN_FAIL', 'GPS_ACCURACY_TOO_LOW', latitude, longitude, accuracy_m, req);
             return res.status(422).json({
                 error: 'GPS_ACCURACY_TOO_LOW',
-                message: `Señal GPS insuficiente (${accuracy_m}m). Mejore su ubicación.`,
+                message: `Señal GPS insuficiente (${accuracy_m}m).`,
                 accuracy: accuracy_m,
                 threshold: GPS_ACCURACY_THRESHOLD
             });
@@ -104,30 +170,34 @@ async function scanQR(req, res) {
             parseFloat(qr.location.longitude)
         );
 
-        // FIX: Forzando radio de 50km para pruebas desde PC
-        const TEST_RADIUS = 50000;
+        const TEST_RADIUS = 50000; // Keep test radius
         if (distance > TEST_RADIUS) {
             await logAudit(userId, qr.id, 'SCAN_FAIL', 'LOCATION_OUT_OF_RANGE', latitude, longitude, accuracy_m, req);
             return res.status(403).json({
                 error: 'LOCATION_OUT_OF_RANGE',
                 message: 'Está fuera del área permitida',
                 distance_meters: Math.round(distance),
-                max_allowed: TEST_RADIUS // Mostrar el radio de prueba
+                max_allowed: TEST_RADIUS
             });
         }
 
-        // 7. Buscar o crear registro de asistencia
-        let attendance = await prisma.attendanceRecord.findUnique({
+        // 7. Buscar o crear registro (Re-find to be sure)
+        // Ensure date comparison ignores time for attendanceDate matches
+        const startOfDay = moment(attendanceDate).tz(TIMEZONE).startOf('day').toDate();
+        const endOfDay = moment(attendanceDate).tz(TIMEZONE).endOf('day').toDate();
+
+        let attendance = await prisma.attendanceRecord.findFirst({
             where: {
-                userId_attendanceDate_shift: {
-                    userId: userId,
-                    attendanceDate: qr.qrDate,
-                    shift: qr.shift,
+                userId: userId,
+                attendanceDate: {
+                    gte: startOfDay,
+                    lte: endOfDay
                 },
+                shift: qr.shift,
             },
         });
 
-        // 8. Lógica según tipo de QR (IN o OUT)
+        // 8. Lógica IN/OUT
         if (qr.qrType === 'IN') {
             // Validar duplicado de entrada
             if (attendance && attendance.checkInTime) {
@@ -138,20 +208,18 @@ async function scanQR(req, res) {
                 });
             }
 
-            // Calcular tardanza y descuento
             const { lateMinutes, discountAmount, status } = calcLateAndDiscount(
                 qr.shift,
                 serverTime,
                 user.role
             );
 
-            // Crear o actualizar registro
             if (!attendance) {
                 attendance = await prisma.attendanceRecord.create({
                     data: {
                         userId: userId,
                         qrId: qr.id,
-                        attendanceDate: qr.qrDate,
+                        attendanceDate: startOfDay, // Normalize to date only
                         shift: qr.shift,
                         checkInTime: serverTime.toDate(),
                         checkInLat: parseFloat(latitude),
@@ -163,6 +231,7 @@ async function scanQR(req, res) {
                     },
                 });
             } else {
+                // Should not happen if attendance check above works
                 attendance = await prisma.attendanceRecord.update({
                     where: { id: attendance.id },
                     data: {
@@ -178,13 +247,12 @@ async function scanQR(req, res) {
             }
 
             await logAudit(userId, qr.id, 'SCAN_SUCCESS', 'CHECK_IN', latitude, longitude, accuracy_m, req);
-
             return res.status(200).json({
                 success: true,
                 message: lateMinutes > 0 ? `Entrada registrada (${lateMinutes} min tarde)` : 'Entrada registrada exitosamente',
                 data: {
                     attendance_id: attendance.id,
-                    qr_type: 'IN',
+                    type: 'IN', // 'qr_type': 'IN' in payload
                     shift: qr.shift,
                     timestamp: attendance.checkInTime,
                     late_minutes: lateMinutes,
@@ -192,8 +260,8 @@ async function scanQR(req, res) {
                     status: status,
                 },
             });
+
         } else if (qr.qrType === 'OUT') {
-            // Validar que existe check-in previo
             if (!attendance || !attendance.checkInTime) {
                 await logAudit(userId, qr.id, 'SCAN_FAIL', 'CHECK_IN_REQUIRED', latitude, longitude, accuracy_m, req);
                 return res.status(400).json({
@@ -202,7 +270,6 @@ async function scanQR(req, res) {
                 });
             }
 
-            // Validar no duplicar salida
             if (attendance.checkOutTime) {
                 await logAudit(userId, qr.id, 'SCAN_FAIL', 'DUPLICATE_CHECK_OUT', latitude, longitude, accuracy_m, req);
                 return res.status(409).json({
@@ -211,7 +278,6 @@ async function scanQR(req, res) {
                 });
             }
 
-            // Registrar salida
             attendance = await prisma.attendanceRecord.update({
                 where: { id: attendance.id },
                 data: {
@@ -223,18 +289,18 @@ async function scanQR(req, res) {
             });
 
             await logAudit(userId, qr.id, 'SCAN_SUCCESS', 'CHECK_OUT', latitude, longitude, accuracy_m, req);
-
             return res.status(200).json({
                 success: true,
                 message: 'Salida registrada exitosamente',
                 data: {
                     attendance_id: attendance.id,
-                    qr_type: 'OUT',
+                    type: 'OUT',
                     shift: qr.shift,
                     timestamp: attendance.checkOutTime,
                 },
             });
         }
+
     } catch (error) {
         console.error('Error en scanQR:', error);
         await logAudit(userId, null, 'SCAN_FAIL', 'SERVER_ERROR', latitude, longitude, accuracy_m, req);

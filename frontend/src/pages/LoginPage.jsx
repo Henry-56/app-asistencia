@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 export default function LoginPage() {
     const [step, setStep] = useState('select-role'); // select-role | login | register
     const [selectedRole, setSelectedRole] = useState(null);
-    const [loginCode, setLoginCode] = useState('03TF');
+    const [loginCode, setLoginCode] = useState('');
     const [registerData, setRegisterData] = useState({
         full_name: 'Usuario Test',
         email: 'test@empresa.com',
@@ -19,6 +19,11 @@ export default function LoginPage() {
     const handleRoleSelect = (role) => {
         setSelectedRole(role);
         setStep('login');
+
+        // Auto-fill credenciales de prueba
+        if (role === 'ADMIN') setLoginCode('03TF');
+        else if (role === 'PRACTICANTE') setLoginCode('5HSZ');
+        else if (role === 'COLABORADOR') setLoginCode('OER2');
     };
 
     const handleLogin = async (e) => {

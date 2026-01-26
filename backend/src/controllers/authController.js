@@ -1,4 +1,6 @@
 const authService = require('../services/authService');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 /**
  * POST /api/auth/register
@@ -118,6 +120,7 @@ async function getMe(req, res) {
  * Obtener lista de usuarios (Admin)
  */
 async function getAllUsers(req, res) {
+    console.log('GET /auth/users called by:', req.user.userId);
     try {
         const users = await prisma.user.findMany({
             orderBy: { fullName: 'asc' },
@@ -131,11 +134,12 @@ async function getAllUsers(req, res) {
                 loginCode: true,
             },
         });
+        console.log(`Found ${users.length} users`);
 
         res.status(200).json(users);
     } catch (error) {
         console.error('Error en getAllUsers:', error);
-        res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
+        res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', details: error.message });
     }
 }
 

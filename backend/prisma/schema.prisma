@@ -48,6 +48,8 @@ model User {
   attendances   AttendanceRecord[]
   auditLogs     AuditLog[]
 
+  schedules     UserSchedule[]
+
   @@map("users")
 }
 
@@ -69,12 +71,13 @@ model Location {
 model QRCode {
   id          Int       @id @default(autoincrement())
   qrToken     String    @unique @default(uuid()) @map("qr_token")
-  qrDate      DateTime  @db.Date @map("qr_date")
+  qrDate      DateTime? @db.Date @map("qr_date")
   qrType      QRType    @map("qr_type")
   shift       ShiftType
   locationId  Int       @map("location_id")
   validFrom   DateTime  @map("valid_from")
   validUntil  DateTime  @map("valid_until")
+  isFixed     Boolean   @default(false) @map("is_fixed")
   createdAt   DateTime  @default(now()) @map("created_at")
 
   location    Location  @relation(fields: [locationId], references: [id])
@@ -85,6 +88,21 @@ model QRCode {
   @@index([qrToken])
   @@index([qrDate, shift])
   @@map("qr_codes")
+}
+
+model UserSchedule {
+  id          Int       @id @default(autoincrement())
+  userId      String    @map("user_id")
+  dayOfWeek   Int       // 1=Lunes, 6=Sábado
+  shift       ShiftType
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, dayOfWeek, shift])
+  @@map("user_schedules")
 }
 
 model AttendanceRecord {

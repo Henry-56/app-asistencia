@@ -10,6 +10,7 @@ import DashboardHome from './pages/DashboardHome';
 import QRGeneratorPage from './pages/QRGeneratorPage';
 import UsersPage from './pages/UsersPage';
 import ReportsPage from './pages/ReportsPage';
+import FixedQRPage from './pages/FixedQRPage';
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = [] }) {
@@ -27,13 +28,21 @@ function ProtectedRoute({ children, allowedRoles = [] }) {
 }
 
 function App() {
-  const { token, fetchMe } = useAuthStore();
+  const { token, fetchMe, loading } = useAuthStore();
 
   useEffect(() => {
     if (token) {
       fetchMe();
     }
   }, [token, fetchMe]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
@@ -74,6 +83,7 @@ function App() {
           <Route path="qr-generator" element={<QRGeneratorPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="fixed-qr" element={<FixedQRPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

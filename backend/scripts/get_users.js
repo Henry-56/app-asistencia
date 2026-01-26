@@ -2,10 +2,12 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-    const admin = await prisma.user.findFirst({
-        where: { role: 'ADMIN' }
+    const users = await prisma.user.findMany({
+        orderBy: { role: 'asc' }
     });
-    console.log('CODIGO_ADMIN_FINAL: ' + admin.loginCode);
+    console.log('--- ALL USERS ---');
+    users.forEach(u => console.log(`[${u.role}] ${u.fullName}: ${u.loginCode}`));
+    console.log('-----------------');
 }
 
 main()

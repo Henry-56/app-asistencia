@@ -58,7 +58,7 @@ async function main() {
     console.log('📍 Sede creada:', location.name);
 
     // 2. Crear usuario administrador
-    const adminLoginCode = await generateUniqueLoginCode();
+    const adminLoginCode = '03TF'; // Fixed Code
     const admin = await prisma.user.create({
         data: {
             email: 'admin@empresa.com',
@@ -75,7 +75,20 @@ async function main() {
 
     // 3. Crear colaboradores de prueba
     const colaboradores = [];
-    for (let i = 1; i <= 5; i++) {
+    // User 1 Fixed
+    const colab1 = await prisma.user.create({
+        data: {
+            email: `colaborador1@empresa.com`,
+            loginCode: 'OER2', // Fixed Code
+            fullName: `Colaborador Ejemplo 1`,
+            employeeCode: `EMP-2026-0002`,
+            role: 'COLABORADOR',
+            isActive: true,
+        },
+    });
+    colaboradores.push({ name: colab1.fullName, code: colab1.loginCode });
+
+    for (let i = 2; i <= 5; i++) {
         const loginCode = await generateUniqueLoginCode();
         const user = await prisma.user.create({
             data: {
@@ -95,7 +108,20 @@ async function main() {
 
     // 4. Crear practicantes de prueba
     const practicantes = [];
-    for (let i = 1; i <= 3; i++) {
+    // Practitioner 1 Fixed
+    const prac1 = await prisma.user.create({
+        data: {
+            email: `practicante1@empresa.com`,
+            loginCode: '5HSZ', // Fixed Code
+            fullName: `Practicante Ejemplo 1`,
+            employeeCode: `EMP-2026-0007`,
+            role: 'PRACTICANTE',
+            isActive: true,
+        },
+    });
+    practicantes.push({ name: prac1.fullName, code: prac1.loginCode });
+
+    for (let i = 2; i <= 3; i++) {
         const loginCode = await generateUniqueLoginCode();
         const user = await prisma.user.create({
             data: {

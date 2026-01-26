@@ -20,7 +20,7 @@ api.interceptors.response.use(
         if (error.response?.status === 401) {
             localStorage.removeItem('auth_token');
             localStorage.removeItem('auth-storage');
-            window.location.href = '/';
+            // window.location.href = '/'; // Disable auto-reload to prevent loops
         }
         return Promise.reject(error);
     }

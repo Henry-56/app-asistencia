@@ -36,11 +36,13 @@ export const useAuthStore = create(
             },
 
             fetchMe: async () => {
+                set({ loading: true });
                 try {
                     const { data } = await api.get('/auth/me');
-                    set({ user: data.user });
+                    set({ user: data.user, loading: false });
                 } catch (error) {
-                    set({ user: null, token: null });
+                    console.error('FetchMe Error:', error);
+                    set({ user: null, token: null, loading: false });
                     localStorage.removeItem('auth_token');
                 }
             },

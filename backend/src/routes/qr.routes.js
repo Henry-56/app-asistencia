@@ -10,4 +10,7 @@ router.post('/generate-today', authenticate, authorize('ADMIN'), qrController.ge
 // Todos pueden ver los QRs de hoy
 router.get('/today', authenticate, qrController.getToday);
 
+// Obtener/Crear QR Fijo
+router.post('/fixed', authenticate, authorize('ADMIN'), qrController.getOrCreateFixedQR);
+
 module.exports = router;
