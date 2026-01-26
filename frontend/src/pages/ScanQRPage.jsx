@@ -162,7 +162,8 @@ export default function ScanQRPage() {
                 const { status, data } = error.response;
 
                 if (status === 410) {
-                    errorMsg = '⌛ El QR ha expirado. Pida uno nuevo.';
+                    // Usar mensaje del backend si existe, o fallback
+                    errorMsg = data.message || '⌛ El QR ha expirado o está fuera de horario.';
                 } else if (status === 403) {
                     if (data.error === 'LOCATION_OUT_OF_RANGE') {
                         errorMsg = `📍 Estás muy lejos de la sede (${data.distance_meters}m). Acércate más.`;
