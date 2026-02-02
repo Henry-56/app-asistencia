@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { Suspense } from 'react';
 
 export default function DashboardLayout() {
     const location = useLocation();
@@ -70,7 +71,13 @@ export default function DashboardLayout() {
                 </div>
 
                 <div className="p-8">
-                    <Outlet />
+                    <Suspense fallback={
+                        <div className="flex justify-center items-center h-64">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                        </div>
+                    }>
+                        <Outlet />
+                    </Suspense>
                 </div>
             </div>
         </div>

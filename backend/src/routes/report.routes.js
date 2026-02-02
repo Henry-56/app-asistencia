@@ -5,5 +5,6 @@ const router = express.Router();
 
 router.get('/range', authenticate, authorize('ADMIN'), reportController.getRangeStats);
 router.get('/day', authenticate, authorize('ADMIN'), reportController.getDailyDetail);
+router.get('/dashboard-stats', authenticate, authorize('ADMIN'), reportController.getDashboardStats);
 
 module.exports = router;

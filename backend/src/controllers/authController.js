@@ -120,7 +120,7 @@ async function getMe(req, res) {
  * Obtener lista de usuarios (Admin)
  */
 async function getAllUsers(req, res) {
-    console.log('GET /auth/users called by:', req.user.userId);
+
     try {
         const users = await prisma.user.findMany({
             orderBy: { fullName: 'asc' },
@@ -134,7 +134,7 @@ async function getAllUsers(req, res) {
                 loginCode: true,
             },
         });
-        console.log(`Found ${users.length} users`);
+
 
         res.status(200).json(users);
     } catch (error) {

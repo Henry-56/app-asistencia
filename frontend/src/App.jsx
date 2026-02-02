@@ -1,16 +1,17 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/authStore';
-import { useEffect } from 'react';
+import { useEffect, Suspense, lazy } from 'react';
 
-import LoginPage from './pages/LoginPage';
-import ScanQRPage from './pages/ScanQRPage';
-import DashboardLayout from './components/DashboardLayout';
-import DashboardHome from './pages/DashboardHome';
-import QRGeneratorPage from './pages/QRGeneratorPage';
-import UsersPage from './pages/UsersPage';
-import ReportsPage from './pages/ReportsPage';
-import FixedQRPage from './pages/FixedQRPage';
+// Lazy Load Pages
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const ScanQRPage = lazy(() => import('./pages/ScanQRPage'));
+const DashboardLayout = lazy(() => import('./components/DashboardLayout'));
+const DashboardHome = lazy(() => import('./pages/DashboardHome'));
+const QRGeneratorPage = lazy(() => import('./pages/QRGeneratorPage')); // Note: This might not be used in routes yet but keeping consistency if it was imported
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const FixedQRPage = lazy(() => import('./pages/FixedQRPage'));
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = [] }) {
@@ -27,6 +28,13 @@ function ProtectedRoute({ children, allowedRoles = [] }) {
   return children;
 }
 
+// Loading Spinner Component
+const LoadingFallback = () => (
+  <div className="flex justify-center items-center h-screen bg-gray-50">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+  </div>
+);
+
 function App() {
   const { token, fetchMe, loading } = useAuthStore();
 
@@ -37,11 +45,7 @@ function App() {
   }, [token, fetchMe]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen bg-gray-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
+    return <LoadingFallback />;
   }
 
   return (
@@ -57,36 +61,38 @@ function App() {
         }}
       />
 
-      <Routes>
-        <Route path="/" element={<LoginPage />} />
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          <Route path="/" element={<LoginPage />} />
 
-        {/* Rutas para usuarios (Colaboradores/Practicantes) */}
-        <Route
-          path="/scan"
-          element={
-            <ProtectedRoute allowedRoles={['COLABORADOR', 'PRACTICANTE']}>
-              <ScanQRPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Rutas para usuarios (Colaboradores/Practicantes) */}
+          <Route
+            path="/scan"
+            element={
+              <ProtectedRoute allowedRoles={['COLABORADOR', 'PRACTICANTE']}>
+                <ScanQRPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Rutas para Admin */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <DashboardLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<DashboardHome />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="fixed-qr" element={<FixedQRPage />} />
-        </Route>
+          {/* Rutas para Admin */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<DashboardHome />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="fixed-qr" element={<FixedQRPage />} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

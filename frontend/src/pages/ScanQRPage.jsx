@@ -3,15 +3,18 @@ import { Html5Qrcode } from 'html5-qrcode';
 import api from '../lib/axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
+import { CheckCircle, XCircle, AlertTriangle, X } from 'lucide-react';
+import moment from 'moment';
+import 'moment-timezone';
 
 export default function ScanQRPage() {
     const [scanning, setScanning] = useState(false);
     const [location, setLocation] = useState(null);
     const locationRef = useRef(null);
-    const [lastScan, setLastScan] = useState(null);
     const [permissionGranted, setPermissionGranted] = useState(false);
     const { user, logout } = useAuthStore();
     const scannerRef = useRef(null);
+    const [scanResult, setScanResult] = useState(null); // { success, message, data }
 
     // Limpieza al desmontar
     useEffect(() => {
@@ -23,6 +26,7 @@ export default function ScanQRPage() {
     }, []);
 
     const startProcess = async () => {
+        setScanResult(null);
         setScanning(true);
         setInitialLocation();
     };
@@ -39,7 +43,6 @@ export default function ScanQRPage() {
 
     const requestLocation = () => {
         return new Promise((resolve, reject) => {
-            console.log('Solicitando ubicación...');
             if (!('geolocation' in navigator)) {
                 toast.error('Geolocalización no soportada');
                 return reject('Geolocalización no soportada');
@@ -47,7 +50,6 @@ export default function ScanQRPage() {
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    console.log('Ubicación obtenida:', position.coords);
                     const locData = {
                         latitude: position.coords.latitude,
                         longitude: position.coords.longitude,
@@ -67,11 +69,7 @@ export default function ScanQRPage() {
     };
 
     const initScannerRaw = async () => {
-        console.log('Iniciando Html5Qrcode...');
-
         if (!document.getElementById('reader')) {
-            console.error("Elemento 'reader' no encontrado");
-            toast.error("Error de inicialización de video");
             setScanning(false);
             return;
         }
@@ -94,8 +92,6 @@ export default function ScanQRPage() {
             );
 
             setPermissionGranted(true);
-            console.log("Cámara iniciada correctamente");
-
         } catch (err) {
             console.error("Error al iniciar cámara:", err);
             toast.error("No se pudo iniciar la cámara. Verifica permisos.");
@@ -104,31 +100,26 @@ export default function ScanQRPage() {
     };
 
     const onScanSuccess = async (decodedText) => {
-        console.log("QR Detectado:", decodedText);
-
-        const currentLocation = locationRef.current;
-
-        if (!currentLocation) {
-            console.warn("Escaneo ignorado: Ubicación no disponible (Ref es null)");
-            requestLocation().catch(console.error);
-            toast.error("Validando ubicación...", { id: 'gps-wait' });
-            return;
-        }
-
-        if (lastScan === decodedText) {
-            console.log("Escaneo ignorado: Código duplicado reciente");
-            return;
-        }
-
-        console.log("Procesando QR...", { qr: decodedText, location: currentLocation });
-        setLastScan(decodedText);
-        toast.loading("Procesando asistencia...", { id: 'processing-scan' });
-
+        // Pausar inmediatamente para feedback
         if (scannerRef.current) {
             try {
-                scannerRef.current.pause();
+                await scannerRef.current.stop();
+                scannerRef.current.clear();
             } catch (e) { console.error("Error pausando", e); }
         }
+        setScanning(false); // UI change
+
+        const currentLocation = locationRef.current;
+        if (!currentLocation) {
+            setScanResult({
+                success: false,
+                title: 'Ubicación no encontrada',
+                message: 'No se pudo obtener tu ubicación GPS. Intenta de nuevo.'
+            });
+            return;
+        }
+
+        toast.loading("Verificando...", { id: 'processing-scan' });
 
         try {
             const { data } = await api.post('/attendance/scan', {
@@ -138,159 +129,178 @@ export default function ScanQRPage() {
                 accuracy_m: currentLocation.accuracy,
             });
 
-            console.log("Respuesta backend:", data);
             toast.dismiss('processing-scan');
-            toast.success(data.message, { duration: 5000 });
 
-            if (data.data.late_minutes > 0) {
-                toast(`Tardanza: ${data.data.late_minutes} min | Descuento: S/ ${data.data.discount_amount}`, {
-                    icon: '⚠️',
-                    duration: 8000,
-                });
-            }
-
-            await stopScanning();
+            // Set Success Result
+            setScanResult({
+                success: true,
+                title: data.data.type === 'IN' ? '¡Entrada Registrada!' : '¡Salida Registrada!',
+                message: data.message,
+                data: data.data
+            });
 
         } catch (error) {
             console.error("Error API Scan:", error);
             toast.dismiss('processing-scan');
 
             let errorMsg = 'Error al registrar asistencia';
+            let title = 'Error';
 
             if (error.response) {
-                // Mensajes específicos basados en el error del backend
                 const { status, data } = error.response;
-
                 if (status === 410) {
-                    // Usar mensaje del backend si existe, o fallback
-                    errorMsg = data.message || '⌛ El QR ha expirado o está fuera de horario.';
-                } else if (status === 403) {
-                    if (data.error === 'LOCATION_OUT_OF_RANGE') {
-                        errorMsg = `📍 Estás muy lejos de la sede (${data.distance_meters}m). Acércate más.`;
+                    if (data.error === 'OUT_OF_WINDOW') {
+                        title = 'Fuera de Horario';
                     } else {
-                        errorMsg = data.message || 'Acceso denegado';
+                        title = 'QR Expirado';
+                    }
+                    errorMsg = data.message || 'El código QR ya no es válido.';
+                } else if (status === 403) {
+                    title = 'Acceso Denegado';
+                    if (data.error === 'LOCATION_OUT_OF_RANGE') {
+                        errorMsg = `Estás fuera del rango permitido (${data.distance_meters} metros).`;
+                    } else {
+                        errorMsg = data.message;
                     }
                 } else if (status === 409) {
-                    errorMsg = data.message || 'Ya registraste asistencia hoy.';
-                } else if (status === 422) {
-                    errorMsg = data.message || 'Señal GPS insuficiente. Sal a un lugar abierto.';
+                    title = 'Registro Duplicado';
+                    errorMsg = data.message;
                 } else {
-                    errorMsg = data.message || data.error || `Error del servidor (${status})`;
+                    errorMsg = data.message || `Error del servidor (${status})`;
                 }
-            } else if (error.request) {
+            } else {
                 errorMsg = 'Error de conexión. Verifica tu internet.';
             }
 
-            toast.error(errorMsg, { duration: 6000 });
-
-            setLastScan(null);
-
-            if (scannerRef.current) {
-                try {
-                    scannerRef.current.resume();
-                } catch (e) {
-                    console.error("Error reanudando", e);
-                }
-            }
+            setScanResult({
+                success: false,
+                title,
+                message: errorMsg
+            });
         }
     };
 
     const onScanError = (errorMessage) => {
-        // Ignorar errores de frame vacios
+        // Ignorar errores de frame
     };
 
-    const stopScanning = async () => {
-        if (scannerRef.current) {
-            try {
-                if (scannerRef.current.isScanning) {
-                    await scannerRef.current.stop();
-                }
-                scannerRef.current.clear();
-            } catch (err) {
-                console.error("Error stopping scanner", err);
-            }
-        }
-        setScanning(false);
-        setLastScan(null);
-        setPermissionGranted(false);
+    const handleCloseModal = () => {
+        setScanResult(null);
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-6">
-            <div className="max-w-md mx-auto">
-                {/* Header */}
-                <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-xl font-bold text-gray-800">{user?.fullName}</h2>
-                            <p className="text-sm text-gray-600">{user?.employeeCode}</p>
-                        </div>
-                        <button
-                            onClick={logout}
-                            className="text-red-600 hover:text-red-700 font-semibold"
-                        >
-                            Salir
-                        </button>
+        <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-6 flex flex-col items-center justify-center">
+
+            {/* Main Card */}
+            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+
+                {/* Header Profile */}
+                <div className="flex items-center justify-between mb-8 border-b pb-4">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800">{user?.fullName}</h2>
+                        <p className="text-sm text-gray-600">{user?.employeeCode}</p>
                     </div>
+                    <button onClick={logout} className="text-red-600 font-semibold hover:bg-red-50 px-3 py-1 rounded">
+                        Salir
+                    </button>
                 </div>
 
-                {/* Scanner Section */}
-                <div className="bg-white rounded-2xl shadow-2xl p-6">
-                    <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">
-                        Escanear QR
-                    </h1>
-
-                    {!scanning ? (
-                        <div className="text-center">
-                            <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                                </svg>
-                            </div>
-
-                            <button
-                                onClick={startProcess}
-                                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition transform hover:scale-105"
-                            >
-                                Iniciar Escaneo
-                            </button>
-                            <p className="text-sm text-gray-600 mt-4">
-                                Se usarán permisos de cámara y ubicación
-                            </p>
+                {!scanning && !scanResult ? (
+                    <div className="text-center py-8">
+                        <div className="w-40 h-40 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-8 relative">
+                            <div className="absolute inset-0 bg-blue-500 rounded-full opacity-10 animate-pulse"></div>
+                            <svg className="w-20 h-20 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                            </svg>
                         </div>
-                    ) : (
-                        <div>
-                            <div id="reader" className="w-full rounded-lg overflow-hidden border-2 border-gray-200 bg-black min-h-[300px]"></div>
 
-                            {location && (
-                                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                                    <p className="text-sm text-green-800">
-                                        📍 Ubicación: OK (±{Math.round(location.accuracy)}m)
-                                    </p>
-                                    {!permissionGranted && <p className="text-xs text-blue-600">Iniciando cámara...</p>}
-                                </div>
+                        <button
+                            onClick={startProcess}
+                            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-blue-700 transition transform hover:scale-[1.02]"
+                        >
+                            Escanear Asistencia
+                        </button>
+                    </div>
+                ) : scanning ? (
+                    <div>
+                        <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
+                            <div id="reader" className="w-full h-full"></div>
+                            <div className="absolute inset-0 border-2 border-white/30 pointer-events-none"></div>
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-green-400 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none"></div>
+                        </div>
+
+                        <div className="mt-4 text-center">
+                            {location ? (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    📍 GPS Activo
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 animate-pulse">
+                                    🛰️ Buscando GPS...
+                                </span>
                             )}
-
-                            <button
-                                onClick={stopScanning}
-                                className="w-full mt-4 bg-red-500 text-white py-3 rounded-lg font-semibold hover:bg-red-600 transition"
-                            >
+                            <button onClick={() => setScanning(false)} className="block w-full mt-4 text-gray-500 hover:text-gray-700 py-2">
                                 Cancelar
                             </button>
                         </div>
-                    )}
-                </div>
+                    </div>
+                ) : null}
 
-                {/* Instrucciones */}
-                <div className="mt-6 bg-white/90 backdrop-blur rounded-xl p-4">
-                    <h3 className="font-semibold text-gray-800 mb-2">📋 Instrucciones:</h3>
-                    <ul className="text-sm text-gray-700 space-y-1">
-                        <li>• Mantén el celular estable</li>
-                        <li>• Asegura buena iluminación en el QR</li>
-                        <li>• Distancia recomendada: 20-30cm</li>
-                    </ul>
-                </div>
+                {/* RESULT MODAL (Inline) */}
+                {scanResult && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
+
+                            <div className={`p-6 text-center ${scanResult.success ? 'bg-green-50' : 'bg-red-50'}`}>
+                                {scanResult.success ? (
+                                    <CheckCircle className="w-20 h-20 mx-auto text-green-500 mb-2" />
+                                ) : (
+                                    <XCircle className="w-20 h-20 mx-auto text-red-500 mb-2" />
+                                )}
+                                <h3 className={`text-2xl font-bold ${scanResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                                    {scanResult.title}
+                                </h3>
+                            </div>
+
+                            <div className="p-6">
+                                <p className="text-gray-600 text-center text-lg mb-6">
+                                    {scanResult.message}
+                                </p>
+
+                                {scanResult.success && scanResult.data && (
+                                    <div className="bg-gray-50 rounded-xl p-4 mb-6 space-y-2 border border-gray-100">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-500">Hora:</span>
+                                            <span className="font-mono font-medium">{moment(scanResult.data.timestamp).format('h:mm A')}</span>
+                                        </div>
+                                        {scanResult.data.late_minutes > 0 && (
+                                            <div className="flex justify-between text-sm text-yellow-700 bg-yellow-50 p-2 rounded">
+                                                <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Tardanza:</span>
+                                                <span className="font-bold">{scanResult.data.late_minutes} min</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <button
+                                    onClick={handleCloseModal}
+                                    className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition transform hover:scale-[1.02] ${scanResult.success ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                                        }`}
+                                >
+                                    {scanResult.success ? 'Aceptar' : 'Intentar de nuevo'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </div>
+
+            {!scanning && (
+                <div className="mt-8 text-white/80 text-center text-sm">
+                    <p>© 2026 Sistema de Asistencia</p>
+                </div>
+            )}
         </div>
     );
 }

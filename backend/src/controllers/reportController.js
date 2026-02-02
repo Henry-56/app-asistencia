@@ -8,6 +8,11 @@ const { TIMEZONE } = require('../config/constants');
  * Params: start, end, locationId (optional)
  * Returns daily stats: { date: 'YYYY-MM-DD', present: 5, late: 2, absent: 1 }
  */
+/**
+ * GET /api/reports/range
+ * Params: start, end, locationId (optional)
+ * Returns daily stats: { date: 'YYYY-MM-DD', present: 5, late: 2, absent: 1 }
+ */
 async function getRangeStats(req, res) {
     try {
         const { start, end, locationId } = req.query;
@@ -16,9 +21,15 @@ async function getRangeStats(req, res) {
             return res.status(400).json({ error: 'MISSING_DATES', message: 'Start and End dates are required' });
         }
 
-        const startDate = moment.tz(start, TIMEZONE).startOf('day');
-        const endDate = moment.tz(end, TIMEZONE).endOf('day');
-        const daysDiff = endDate.diff(startDate, 'days') + 1;
+        // Use UTC for DB querying to ensure we catch all records stored as 'YYYY-MM-DD 00:00:00 UTC'
+        const startDateUtc = moment.utc(start).startOf('day');
+        const endDateUtc = moment.utc(end).endOf('day');
+
+        // Loop logic still uses Input Dates (which should be YYYY-MM-DD)
+        // We'll iterate the requested range using Moment
+        const viewStartDate = moment(start); // interpreted as local or strict YYYY-MM-DD
+        const viewEndDate = moment(end);
+        const daysDiff = viewEndDate.diff(viewStartDate, 'days') + 1;
 
         if (daysDiff > 31) {
             return res.status(400).json({ error: 'RANGE_TOO_LONG', message: 'Max 31 days' });
@@ -27,52 +38,55 @@ async function getRangeStats(req, res) {
         // 1. Get Users (Active)
         const users = await prisma.user.findMany({
             where: { isActive: true },
-            include: { schedules: true } // Preload schedules
+            include: { schedules: true }
         });
 
-        // 2. Get Attendances
+        // 2. Get Attendances (Range Query in UTC)
         const attendances = await prisma.attendanceRecord.findMany({
             where: {
                 attendanceDate: {
-                    gte: startDate.toDate(),
-                    lte: endDate.toDate()
+                    gte: startDateUtc.toDate(),
+                    lte: endDateUtc.toDate()
                 }
+            },
+            select: {
+                userId: true,
+                attendanceDate: true,
+                shift: true,
+                status: true
             }
         });
 
         const stats = [];
-        let currentDate = startDate.clone();
+        let currentDate = viewStartDate.clone();
 
         for (let i = 0; i < daysDiff; i++) {
             const dateStr = currentDate.format('YYYY-MM-DD');
             const dayOfWeekIso = currentDate.isoWeekday(); // 1=Mon
 
-            let presentCount = 0;
-            let lateCount = 0;
-            let absentCount = 0;
+            // Filter records for this specific DATE (comparing against UTC date string)
+            const dayRecords = attendances.filter(a =>
+                moment.utc(a.attendanceDate).format('YYYY-MM-DD') === dateStr
+            );
 
-            for (const user of users) {
-                // Determine scheduled shifts for this user on this day
-                // schedules stores dayOfWeek (1=Mon)
-                const userShifts = user.schedules.filter(s => s.dayOfWeek === dayOfWeekIso && s.isActive);
+            // Count explicit statuses from actual records
+            let presentCount = dayRecords.filter(r => r.status === 'PRESENTE').length;
+            let lateCount = dayRecords.filter(r => r.status === 'TARDE').length;
+            let explicitAbsentCount = dayRecords.filter(r => r.status === 'FALTA').length;
 
-                // For each scheduled shift, check if there is an attendance record
-                for (const shift of userShifts) {
-                    const record = attendances.find(a =>
-                        a.userId === user.id &&
-                        moment(a.attendanceDate).tz(TIMEZONE).format('YYYY-MM-DD') === dateStr &&
-                        a.shift === shift.shift
-                    );
+            // Calculate IMPLIED absences (Scheduled but no record)
+            let impliedAbsentCount = 0;
+            const isPastOrToday = currentDate.isSameOrBefore(moment().tz(TIMEZONE), 'day');
 
-                    if (record) {
-                        if (record.status === 'PRESENTE') presentCount++;
-                        if (record.status === 'TARDE') lateCount++;
-                        if (record.status === 'FALTA') absentCount++; // Explicit failure
-                    } else {
-                        // No record, but scheduled = Absent
-                        // (Unless future date? But reports are typically past/present)
-                        if (currentDate.isSameOrBefore(moment.tz(TIMEZONE))) {
-                            absentCount++;
+            if (isPastOrToday) {
+                for (const user of users) {
+                    const userShifts = user.schedules.filter(s => s.dayOfWeek === dayOfWeekIso && s.isActive);
+
+                    for (const shift of userShifts) {
+                        // Check if this specific schedule was fulfilled
+                        const hasRecord = dayRecords.some(r => r.userId === user.id && r.shift === shift.shift);
+                        if (!hasRecord) {
+                            impliedAbsentCount++;
                         }
                     }
                 }
@@ -82,7 +96,7 @@ async function getRangeStats(req, res) {
                 date: dateStr,
                 present: presentCount,
                 late: lateCount,
-                absent: absentCount
+                absent: explicitAbsentCount + impliedAbsentCount
             });
 
             currentDate.add(1, 'days');
@@ -106,11 +120,17 @@ async function getDailyDetail(req, res) {
         const { date, locationId } = req.query;
         if (!date) return res.status(400).json({ error: 'MISSING_DATE' });
 
-        const targetDate = moment.tz(date, TIMEZONE);
-        const dateStr = targetDate.format('YYYY-MM-DD');
-        const dayOfWeekIso = targetDate.isoWeekday();
+        // Logic date
+        const targetDateStr = String(date);
+        // We use UTC for DB query to match @db.Date storage
+        const startUtc = moment.utc(targetDateStr).startOf('day');
+        const endUtc = moment.utc(targetDateStr).endOf('day');
 
-        // 1. Get Users/Schedules
+        // For shift calculation, we use the weekday of the provided date
+        const targetMoment = moment(targetDateStr);
+        const dayOfWeekIso = targetMoment.isoWeekday();
+
+        // 1. Get Users
         const users = await prisma.user.findMany({
             where: { isActive: true },
             include: { schedules: true },
@@ -121,8 +141,8 @@ async function getDailyDetail(req, res) {
         const attendances = await prisma.attendanceRecord.findMany({
             where: {
                 attendanceDate: {
-                    gte: targetDate.startOf('day').toDate(),
-                    lte: targetDate.endOf('day').toDate()
+                    gte: startUtc.toDate(),
+                    lte: endUtc.toDate()
                 }
             },
             include: { qr: { include: { location: true } } }
@@ -132,17 +152,14 @@ async function getDailyDetail(req, res) {
 
         for (const user of users) {
             const userShifts = user.schedules.filter(s => s.dayOfWeek === dayOfWeekIso && s.isActive);
-
-            // If no shifts, usually we don't list them, or list as "Descanso"?
-            // Prompt says: "Lista de usuarios con su estado ... breakdown AM/PM si aplica".
-            // Let's just output rows for each SCHEDULED shift + any extra attendance (unexpected).
-
-            // Track processed shifts
             const processedShifts = new Set();
 
             // Add Scheduled Rows
             for (const s of userShifts) {
                 processedShifts.add(s.shift);
+                // Since we filtered by date range, we just look for user/shift overlap
+                // But strictly speaking, we might want to double check the date string if 'attendances' has extra junk,
+                // though the DB query should prevent that.
                 const record = attendances.find(a => a.userId === user.id && a.shift === s.shift);
 
                 let status = 'FALTA';
@@ -151,15 +168,14 @@ async function getDailyDetail(req, res) {
                 if (record) {
                     status = record.status;
                     info = {
-                        first_name: user.fullName, // Adjust as needed
                         check_in: record.checkInTime,
                         late_minutes: record.lateMinutes,
                         discount: record.discountAmount,
                         location: record.qr?.location?.name
                     };
                 } else {
-                    // Verify if it's future
-                    if (moment().tz(TIMEZONE).isBefore(targetDate.startOf('day'))) {
+                    // If future, PENDIENTE
+                    if (targetMoment.isAfter(moment().tz(TIMEZONE), 'day')) {
                         status = 'PENDIENTE';
                     }
                 }
@@ -174,7 +190,7 @@ async function getDailyDetail(req, res) {
                 });
             }
 
-            // Check records for non-scheduled shifts (e.g. came on Saturday PM)
+            // Check EXTRA records (not in processedShifts)
             const extraRecords = attendances.filter(a => a.userId === user.id && !processedShifts.has(a.shift));
             for (const record of extraRecords) {
                 report.push({
@@ -182,7 +198,7 @@ async function getDailyDetail(req, res) {
                     fullName: user.fullName,
                     role: user.role,
                     shift: record.shift,
-                    status: record.status, // e.g. Presente (Extra)
+                    status: record.status,
                     extra: true,
                     check_in: record.checkInTime,
                     late_minutes: record.lateMinutes,
@@ -200,7 +216,53 @@ async function getDailyDetail(req, res) {
     }
 }
 
+/**
+ * GET /api/reports/dashboard-stats
+ * Returns: { usersCount: 10, presentToday: 5, lateToday: 2 }
+ */
+async function getDashboardStats(req, res) {
+    try {
+        const todayStart = moment().tz(TIMEZONE).startOf('day').toDate();
+        const todayEnd = moment().tz(TIMEZONE).endOf('day').toDate();
+
+        // 1. Total Active Users
+        const usersCount = await prisma.user.count({
+            where: { isActive: true }
+        });
+
+        // 2. Attendance Stats for Today
+        // We use checkInTime presence to count as "Asistencia"
+        // 'TARDE' is a status, but also counts as attendance.
+        const attendancesToday = await prisma.attendanceRecord.findMany({
+            where: {
+                attendanceDate: {
+                    gte: todayStart,
+                    lte: todayEnd
+                }
+            },
+            select: { status: true }
+        });
+
+        const presentToday = attendancesToday.length;
+        const lateToday = attendancesToday.filter(a => a.status === 'TARDE').length;
+
+        res.json({
+            success: true,
+            data: {
+                usersCount,
+                presentToday,
+                lateToday
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in getDashboardStats:', error);
+        res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
+    }
+}
+
 module.exports = {
     getRangeStats,
-    getDailyDetail
+    getDailyDetail,
+    getDashboardStats
 };

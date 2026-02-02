@@ -12,9 +12,9 @@ module.exports = {
     // Ventanas de escaneo (desde - hasta)
     SCAN_WINDOWS: {
         IN_AM: { from: '05:00', until: '13:00' },   // Gran tolerancia para entrada AM
-        OUT_AM: { from: '11:00', until: '16:00' },  // Flexibilidad salida AM
+        OUT_AM: { from: '13:00', until: '16:00' },  // Salida AM desde 1 PM
         IN_PM: { from: '12:00', until: '19:00' },   // Solape para entrada PM
-        OUT_PM: { from: '17:00', until: '23:59' },  // Salida PM hasta fin del día
+        OUT_PM: { from: '19:00', until: '23:59' },  // Salida PM desde 7 PM
     },
 
     // Tolerancia de tardanza (minutos)

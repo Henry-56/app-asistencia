@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../lib/axios';
 import toast from 'react-hot-toast';
 
 export default function DashboardHome() {
+    const [stats, setStats] = useState({
+        usersCount: '-',
+        presentToday: '-',
+        lateToday: '-'
+    });
+
     const [newUser, setNewUser] = useState({
         full_name: '',
         email: '',
@@ -10,6 +16,21 @@ export default function DashboardHome() {
     });
     const [loading, setLoading] = useState(false);
     const [generatedCode, setGeneratedCode] = useState(null);
+
+    useEffect(() => {
+        fetchStats();
+    }, []);
+
+    const fetchStats = async () => {
+        try {
+            const { data } = await api.get('/reports/dashboard-stats');
+            if (data.success) {
+                setStats(data.data);
+            }
+        } catch (error) {
+            console.error('Error fetching dashboard stats:', error);
+        }
+    };
 
     const handleRegister = async (e) => {
         e.preventDefault();
@@ -20,6 +41,7 @@ export default function DashboardHome() {
             setGeneratedCode(data.data);
             toast.success('Usuario creado exitosamente');
             setNewUser({ full_name: '', email: '', role: 'COLABORADOR' });
+            fetchStats(); // Update stats
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al crear usuario');
         } finally {
@@ -37,7 +59,7 @@ export default function DashboardHome() {
                         </div>
                         <div>
                             <p className="text-gray-600 text-sm">Total Usuarios</p>
-                            <p className="text-2xl font-bold text-gray-800">-</p>
+                            <p className="text-2xl font-bold text-gray-800">{stats.usersCount}</p>
                         </div>
                     </div>
                 </div>
@@ -49,7 +71,7 @@ export default function DashboardHome() {
                         </div>
                         <div>
                             <p className="text-gray-600 text-sm">Asistencias Hoy</p>
-                            <p className="text-2xl font-bold text-gray-800">-</p>
+                            <p className="text-2xl font-bold text-gray-800">{stats.presentToday}</p>
                         </div>
                     </div>
                 </div>
@@ -61,7 +83,7 @@ export default function DashboardHome() {
                         </div>
                         <div>
                             <p className="text-gray-600 text-sm">Tardanzas Hoy</p>
-                            <p className="text-2xl font-bold text-gray-800">-</p>
+                            <p className="text-2xl font-bold text-gray-800">{stats.lateToday}</p>
                         </div>
                     </div>
                 </div>

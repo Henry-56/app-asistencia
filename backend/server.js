@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const { generalLimiter } = require('./src/middleware/rateLimiter');
 
 // Importar CRON jobs (se iniciarán automáticamente)
@@ -11,6 +12,7 @@ const app = express();
 
 // Middleware
 app.use(helmet());
+app.use(compression());
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
 app.use(generalLimiter);
