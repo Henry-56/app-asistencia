@@ -10,6 +10,9 @@ const { generalLimiter } = require('./src/middleware/rateLimiter');
 
 const app = express();
 
+// Trust proxy for Render/Heroku/etc (needed for express-rate-limit behind reverse proxy)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet());
 app.use(compression());
