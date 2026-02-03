@@ -16,6 +16,28 @@ export default function ScanQRPage() {
     const scannerRef = useRef(null);
     const [scanResult, setScanResult] = useState(null); // { success, message, data }
 
+    // Request location permission on mount
+    useEffect(() => {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const locData = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy,
+                    };
+                    setLocation(locData);
+                    locationRef.current = locData;
+                    setPermissionGranted(true);
+                },
+                (error) => {
+                    console.log('Location permission not granted yet:', error.message);
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+    }, []);
+
     // Limpieza al desmontar
     useEffect(() => {
         return () => {
