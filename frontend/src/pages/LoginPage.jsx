@@ -21,9 +21,9 @@ export default function LoginPage() {
         setStep('login');
 
         // Auto-fill credenciales de prueba
-        if (role === 'ADMIN') setLoginCode('03TF');
-        else if (role === 'PRACTICANTE') setLoginCode('5HSZ');
-        else if (role === 'COLABORADOR') setLoginCode('OER2');
+        if (role === 'ADMIN') setLoginCode('ADM1');
+        else if (role === 'PRACTICANTE') setLoginCode('PRA1');
+        else if (role === 'COLABORADOR') setLoginCode('COL1');
     };
 
     const handleLogin = async (e) => {
@@ -193,7 +193,7 @@ export default function LoginPage() {
                                 <input
                                     type="text"
                                     value={loginCode}
-                                    onChange={(e) => setLoginCode(e.target.value.toUpperCase())}
+                                    onChange={(e) => setLoginCode(e.target.value.toUpperCase().trim())}
                                     maxLength={4}
                                     placeholder="A5K9"
                                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-2xl font-bold tracking-widest uppercase focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"

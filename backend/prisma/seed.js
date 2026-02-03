@@ -37,6 +37,7 @@ async function main() {
     // Limpiar datos existentes
     await prisma.auditLog.deleteMany();
     await prisma.attendanceRecord.deleteMany();
+    await prisma.userSchedule.deleteMany(); // Added this
     await prisma.qRCode.deleteMany();
     await prisma.location.deleteMany();
     await prisma.user.deleteMany();
@@ -58,7 +59,7 @@ async function main() {
     console.log('📍 Sede creada:', location.name);
 
     // 2. Crear usuario administrador
-    const adminLoginCode = '03TF'; // Fixed Code
+    const adminLoginCode = 'ADM1'; // Friendly Code
     const admin = await prisma.user.create({
         data: {
             email: 'admin@empresa.com',
@@ -79,7 +80,7 @@ async function main() {
     const colab1 = await prisma.user.create({
         data: {
             email: `colaborador1@empresa.com`,
-            loginCode: 'OER2', // Fixed Code
+            loginCode: 'COL1', // Friendly Code
             fullName: `Colaborador Ejemplo 1`,
             employeeCode: `EMP-2026-0002`,
             role: 'COLABORADOR',
@@ -112,7 +113,7 @@ async function main() {
     const prac1 = await prisma.user.create({
         data: {
             email: `practicante1@empresa.com`,
-            loginCode: '5HSZ', // Fixed Code
+            loginCode: 'PRA1', // Friendly Code
             fullName: `Practicante Ejemplo 1`,
             employeeCode: `EMP-2026-0007`,
             role: 'PRACTICANTE',

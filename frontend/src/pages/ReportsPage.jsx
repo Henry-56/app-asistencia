@@ -5,8 +5,10 @@ import moment from 'moment';
 import 'moment-timezone';
 import * as XLSX from 'xlsx';
 import {
-    ChevronLeft, ChevronRight, Calendar as CalIcon, Download, Reply,
-    ListFilter, Grid, Users, Search
+    ListFilter, Grid, Users, Search, ShieldCheck, X,
+    Calendar as CalIcon, BarChart3, Clock, User, Download, Filter,
+    ChevronLeft, ChevronRight, List, AlertCircle, CheckCircle,
+    XCircle, FileText, Briefcase
 } from 'lucide-react';
 
 export default function ReportsPage() {
@@ -29,8 +31,13 @@ export default function ReportsPage() {
         userId: ''
     });
     const [listData, setListData] = useState([]);
-    const [loadingList, setLoadingList] = useState(false);
     const [listTotals, setListTotals] = useState({ attempts: 0, lates: 0, discounts: 0 });
+    const [loadingList, setLoadingList] = useState(false);
+    // --- STATE: JUSTIFY MODAL ---
+    const [justifyModalOpen, setJustifyModalOpen] = useState(false);
+    const [recordToJustify, setRecordToJustify] = useState(null);
+    const [justificationReason, setJustificationReason] = useState('');
+    const [justifying, setJustifying] = useState(false);
 
     useEffect(() => {
         fetchRangeStats();
@@ -125,6 +132,37 @@ export default function ReportsPage() {
     const handleMonthChange = (direction) => {
         setCurrentMonth(prev => prev.clone().add(direction, 'months'));
         setSelectedDate(null);
+    };
+
+    const startJustify = (record) => {
+        setRecordToJustify(record);
+        setJustificationReason('');
+        setJustifyModalOpen(true);
+    };
+
+    const submitJustification = async () => {
+        if (!justificationReason.trim()) return toast.error('Debes ingresar un motivo');
+
+        setJustifying(true);
+        try {
+            await api.post('/attendance/justify', {
+                attendanceId: recordToJustify.id,
+                reason: justificationReason
+            });
+
+            toast.success('Justificación aplicada');
+            setJustifyModalOpen(false);
+
+            // Refresh current view
+            if (viewMode === 'list') fetchFilteredList();
+            else if (selectedDate) fetchDayDetails(selectedDate);
+
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al justificar');
+        } finally {
+            setJustifying(false);
+        }
     };
 
     const exportXLSX = (dataToExport, filename) => {
@@ -270,7 +308,7 @@ export default function ReportsPage() {
                                     onClick={() => setSelectedDate(null)}
                                     className="p-2 hover:bg-gray-100 rounded-full text-gray-500"
                                 >
-                                    <Reply className="h-5 w-5" />
+                                    <ChevronLeft className="h-5 w-5" />
                                 </button>
                                 <div>
                                     <h2 className="text-xl font-bold text-gray-800">
@@ -317,17 +355,32 @@ export default function ReportsPage() {
                                                     {record.check_in ? moment(record.check_in).tz('America/Lima').format('HH:mm:ss') : '-'}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${record.status === 'PRESENTE' ? 'bg-green-100 text-green-700' :
-                                                        record.status === 'TARDE' ? 'bg-yellow-100 text-yellow-700' :
-                                                            record.status === 'PENDIENTE' ? 'bg-gray-100 text-gray-600' :
-                                                                'bg-red-100 text-red-700'
-                                                        }`}>
-                                                        {record.status}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${record.status === 'PRESENTE' ? 'bg-green-100 text-green-700' :
+                                                            record.status === 'TARDE' ? 'bg-yellow-100 text-yellow-700' :
+                                                                record.status === 'JUSTIFICADO' ? 'bg-blue-100 text-blue-700' :
+                                                                    record.status === 'PENDIENTE' ? 'bg-gray-100 text-gray-600' :
+                                                                        'bg-red-100 text-red-700'
+                                                            }`}>
+                                                            {record.status}
+                                                        </span>
+                                                        {record.isJustified && (
+                                                            <ShieldCheck className="w-4 h-4 text-blue-600" />
+                                                        )}
+                                                    </div>
                                                     {record.late_minutes > 0 && <span className="ml-2 text-xs text-red-500">+{record.late_minutes}m</span>}
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-medium text-red-600">
-                                                    {record.discount > 0 ? `S/ ${parseFloat(record.discount).toFixed(2)}` : '-'}
+                                                <td className="px-6 py-4 text-right font-medium text-red-600 flex justify-end items-center gap-2">
+                                                    <span>{record.discount > 0 ? `S/ ${parseFloat(record.discount).toFixed(2)}` : record.status === 'JUSTIFICADO' ? 'S/ 0.00' : '-'}</span>
+                                                    {(record.discount > 0 || record.status === 'FALTA') && !record.isJustified && (
+                                                        <button
+                                                            onClick={() => startJustify(record)}
+                                                            className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-indigo-600 transition-colors"
+                                                            title="Justificar"
+                                                        >
+                                                            <ShieldCheck className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -443,15 +496,28 @@ export default function ReportsPage() {
                                                 <td className="px-4 py-3 font-mono text-gray-600">{record.check_in}</td>
                                                 <td className="px-4 py-3 font-mono text-gray-600">{record.check_out}</td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${record.status === 'PRESENTE' ? 'bg-green-100 text-green-700' :
-                                                        record.status === 'TARDE' ? 'bg-yellow-100 text-yellow-700' :
-                                                            'bg-red-100 text-red-700'
-                                                        }`}>
-                                                        {record.status}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${record.status === 'PRESENTE' ? 'bg-green-100 text-green-700' :
+                                                            record.status === 'TARDE' ? 'bg-yellow-100 text-yellow-700' :
+                                                                record.status === 'JUSTIFICADO' ? 'bg-blue-100 text-blue-700' :
+                                                                    'bg-red-100 text-red-700'
+                                                            }`}>
+                                                            {record.status}
+                                                        </span>
+                                                        {record.isJustified && <ShieldCheck className="w-4 h-4 text-blue-600" />}
+                                                    </div>
                                                 </td>
-                                                <td className="px-4 py-3 text-right font-medium text-red-600">
-                                                    {record.discount > 0 ? `S/ ${record.discount.toFixed(2)}` : '-'}
+                                                <td className="px-4 py-3 text-right font-medium text-red-600 flex justify-end items-center gap-2">
+                                                    <span>{record.discount > 0 ? `S/ ${record.discount.toFixed(2)}` : record.status === 'JUSTIFICADO' ? 'S/ 0.00' : '-'}</span>
+                                                    {(record.discount > 0 || record.status === 'FALTA') && !record.isJustified && (
+                                                        <button
+                                                            onClick={() => startJustify(record)}
+                                                            className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-indigo-600 transition-colors"
+                                                            title="Justificar"
+                                                        >
+                                                            <ShieldCheck className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -466,6 +532,49 @@ export default function ReportsPage() {
                                 </table>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+            {/* --- JUSTIFY MODAL --- */}
+            {justifyModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <ShieldCheck className="text-indigo-600" />
+                                Justificar Asistencia
+                            </h3>
+                            <button onClick={() => setJustifyModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
+                                <p>Estás a punto de justificar una <strong>{recordToJustify?.status}</strong>.</p>
+                                <p>Esto eliminará la multa de <strong>S/ {parseFloat(recordToJustify?.discount || 0).toFixed(2)}</strong>.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Motivo de la justificación
+                                </label>
+                                <textarea
+                                    value={justificationReason}
+                                    onChange={(e) => setJustificationReason(e.target.value)}
+                                    placeholder="Ej: Cita médica, Licencia por salud..."
+                                    className="w-full border rounded-lg px-3 py-2 h-24 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                                />
+                            </div>
+
+                            <button
+                                onClick={submitJustification}
+                                disabled={justifying}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {justifying ? 'Procesando...' : 'Confirmar Justificación'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

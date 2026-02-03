@@ -29,10 +29,10 @@ module.exports = {
         ABSENCE: 46.00, // Falta sin aviso
     },
 
-    // Descuentos para PRACTICANTES (en soles)
+    // Descuentos para PRACTICANTES (DEPRECATED - Usan lógica de Colaborador)
     PRACTICANTE_DISCOUNTS: {
-        ANY_LATE: 5.00,     // Cualquier tardanza
-        ABSENCE: 5.00,       // Falta sin aviso
+        ANY_LATE: 5.00,
+        ABSENCE: 46.00,       // Igualado a Colaborador implicita o explicitamente? Mejor mantenemos la estructura pero la logica usa la de arriba.
     },
 
     // Límite de accuracy GPS (metros)

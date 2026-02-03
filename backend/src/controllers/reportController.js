@@ -168,6 +168,7 @@ async function getDailyDetail(req, res) {
                 if (record) {
                     status = record.status;
                     info = {
+                        id: record.id, // Add ID
                         check_in: record.checkInTime,
                         late_minutes: record.lateMinutes,
                         discount: record.discountAmount,
@@ -200,6 +201,7 @@ async function getDailyDetail(req, res) {
                     shift: record.shift,
                     status: record.status,
                     extra: true,
+                    id: record.id, // Add ID
                     check_in: record.checkInTime,
                     late_minutes: record.lateMinutes,
                     discount: record.discountAmount,

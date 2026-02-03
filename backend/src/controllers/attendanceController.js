@@ -100,30 +100,34 @@ async function scanQR(req, res) {
             const windowKey = `${actionType}_${qr.shift}`; // IN_AM, OUT_AM, etc.
             const windowCfg = SCAN_WINDOWS[windowKey];
 
+            // Use Dynamic Schedule Start/End if available, otherwise default
+            let checkTimeStart = windowCfg.from;
+            let checkTimeEnd = windowCfg.until;
+
+            // Optional: You could override window limits based on schedule.startTime
+            // But usually windows are wider than strict schedule.
+            // For LATE calculation, we definitely need schedule.startTime.
+            const scheduledStartTime = schedule.startTime || null; // e.g. "09:00" or null
+
             if (!windowCfg) {
                 // Should not happen if constants are correct
                 isExpired = true;
             } else {
                 const todayStr = moment(targetDate).tz(TIMEZONE).format('YYYY-MM-DD');
                 // Parse window start/end
-                const startWindow = moment.tz(`${todayStr} ${windowCfg.from}`, TIMEZONE);
-                const endWindow = moment.tz(`${todayStr} ${windowCfg.until}`, TIMEZONE);
+                const startWindow = moment.tz(`${todayStr} ${checkTimeStart}`, TIMEZONE);
+                const endWindow = moment.tz(`${todayStr} ${checkTimeEnd}`, TIMEZONE);
 
                 if (!serverTime.isBetween(startWindow, endWindow, null, '[]')) {
-                    // Fuera de ventana
-                    // PERO: Si es fixed, tal vez solo queremos loguearlo y rechazar, no decir "Expired".
-                    // "Expired" es 410. Fuera de ventana es 410 también en este código.
-                    // Vamos a cambiar el mensaje para ser más claros.
-
-                    // Comprobar si es demasiado TEMPRANO o demasiado TARDE
+                    // Fuera de ventana logic...
                     const isEarly = serverTime.isBefore(startWindow);
 
                     await logAudit(userId, qr.id, 'SCAN_FAIL', 'OUT_OF_WINDOW', latitude, longitude, accuracy_m, req);
                     return res.status(410).json({
                         error: 'OUT_OF_WINDOW',
                         message: isEarly
-                            ? `Aún no es hora de marcar. Inicio: ${windowCfg.from}`
-                            : `El horario de marcación ha terminado. Fin: ${windowCfg.until}`
+                            ? `Aún no es hora de marcar. Inicio: ${checkTimeStart}`
+                            : `El horario de marcación ha terminado. Fin: ${checkTimeEnd}`
                     });
                 }
             }
@@ -133,6 +137,9 @@ async function scanQR(req, res) {
 
             // Sobrescribir qrType para lógica posterior
             qr.qrType = actionType; // 'IN' or 'OUT'
+
+            // Pass scheduledStartTime to downstream calc
+            req.scheduledStartTime = scheduledStartTime;
 
         } else {
             // Lógica Legacy (Dinámico) - SOLO si NO es Fixed
@@ -223,7 +230,8 @@ async function scanQR(req, res) {
             const { lateMinutes, discountAmount, status } = calcLateAndDiscount(
                 qr.shift,
                 serverTime,
-                user.role
+                user.role,
+                req.scheduledStartTime // Passed from above
             );
 
             if (!attendance) {
@@ -446,8 +454,59 @@ async function logAudit(userId, qrId, action, reason, lat, lng, accuracy, req) {
     }
 }
 
+/**
+ * Justificar una asistencia (Admin)
+ * POST /api/attendance/justify
+ * Body: { attendanceId, reason }
+ */
+async function justifyAttendance(req, res) {
+    try {
+        const { attendanceId, reason } = req.body;
+
+        if (!attendanceId || !reason) {
+            return res.status(400).json({ error: 'MISSING_DATA', message: 'Attendance ID and Reason are required' });
+        }
+
+        const record = await prisma.attendanceRecord.findUnique({
+            where: { id: parseInt(attendanceId) }
+        });
+
+        if (!record) {
+            return res.status(404).json({ error: 'NOT_FOUND', message: 'Registro no encontrado' });
+        }
+
+        // Update record
+        const updated = await prisma.attendanceRecord.update({
+            where: { id: parseInt(attendanceId) },
+            data: {
+                status: 'JUSTIFICADO',
+                discountAmount: 0.00,
+                isJustified: true,
+                justificationReason: reason
+            }
+        });
+
+        // Log audit
+        await prisma.auditLog.create({
+            data: {
+                userId: req.user.userId, // Admin who did it
+                action: 'JUSTIFY_ATTENDANCE',
+                reason: `Justified ID ${attendanceId}: ${reason}`,
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress
+            }
+        });
+
+        res.json({ success: true, message: 'Asistencia justificada correctamente', data: updated });
+
+    } catch (error) {
+        console.error('Error justifying attendance:', error);
+        res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
+    }
+}
+
 module.exports = {
     scanQR,
     getMyRecords,
     getAllRecords,
+    justifyAttendance,
 };

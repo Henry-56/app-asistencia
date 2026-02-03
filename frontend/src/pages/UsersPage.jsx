@@ -8,7 +8,7 @@ export default function UsersPage() {
     const [loading, setLoading] = useState(true);
     const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
-    const [scheduleMap, setScheduleMap] = useState({}); // { dayIso: { AM: bool, PM: bool } }
+    const [scheduleMap, setScheduleMap] = useState({}); // { dayIso: { AM: { isActive: bool, start: '09:00', end: '13:00' }, ... } }
     const [savingSchedule, setSavingSchedule] = useState(false);
 
     useEffect(() => {
@@ -30,18 +30,27 @@ export default function UsersPage() {
     const openScheduleModal = async (user) => {
         setEditingUser(user);
         setScheduleModalOpen(true);
-        // Initialize with all false
+        // Initialize with all false but default times
         const initial = {};
-        for (let i = 1; i <= 6; i++) initial[i] = { AM: false, PM: false };
+        for (let i = 1; i <= 6; i++) {
+            initial[i] = {
+                AM: { isActive: false, start: '09:00', end: '13:00' },
+                PM: { isActive: false, start: '14:00', end: '18:00' }
+            };
+        }
         setScheduleMap(initial);
 
         try {
             const { data } = await api.get(`/users/${user.id}/schedule`);
             if (data.success) {
-                const map = { ...initial };
+                const map = JSON.parse(JSON.stringify(initial)); // Deep copy
                 data.data.forEach(item => {
-                    if (map[item.dayOfWeek]) {
-                        map[item.dayOfWeek][item.shift] = item.isActive;
+                    if (map[item.dayOfWeek] && map[item.dayOfWeek][item.shift]) {
+                        map[item.dayOfWeek][item.shift] = {
+                            isActive: item.isActive,
+                            start: item.startTime || (item.shift === 'AM' ? '09:00' : '14:00'),
+                            end: item.endTime || (item.shift === 'AM' ? '13:00' : '18:00')
+                        };
                     }
                 });
                 setScheduleMap(map);
@@ -55,21 +64,44 @@ export default function UsersPage() {
     const toggleShift = (day, shift) => {
         setScheduleMap(prev => ({
             ...prev,
-            [day]: { ...prev[day], [shift]: !prev[day][shift] }
+            [day]: {
+                ...prev[day],
+                [shift]: {
+                    ...prev[day][shift],
+                    isActive: !prev[day][shift].isActive
+                }
+            }
+        }));
+    };
+
+    const updateTime = (day, shift, field, value) => {
+        setScheduleMap(prev => ({
+            ...prev,
+            [day]: {
+                ...prev[day],
+                [shift]: {
+                    ...prev[day][shift],
+                    [field]: value
+                }
+            }
         }));
     };
 
     const toggleDay = (day) => {
         const current = scheduleMap[day];
-        const allActive = current.AM && (day === 6 ? true : current.PM);
+        const allActive = current.AM.isActive && (day === 6 ? true : current.PM.isActive);
 
-        setScheduleMap(prev => ({
-            ...prev,
-            [day]: {
-                AM: !allActive,
-                PM: day === 6 ? false : !allActive
+        setScheduleMap(prev => {
+            const newState = { ...prev[day] };
+            newState.AM = { ...newState.AM, isActive: !allActive };
+            if (day !== 6) {
+                newState.PM = { ...newState.PM, isActive: !allActive };
             }
-        }));
+            return {
+                ...prev,
+                [day]: newState
+            };
+        });
     };
 
     const saveSchedule = async () => {
@@ -79,8 +111,25 @@ export default function UsersPage() {
             // Convert map to array
             const scheduleArray = [];
             Object.entries(scheduleMap).forEach(([day, shifts]) => {
-                if (shifts.AM) scheduleArray.push({ dayOfWeek: parseInt(day), shift: 'AM', isActive: true });
-                if (shifts.PM) scheduleArray.push({ dayOfWeek: parseInt(day), shift: 'PM', isActive: true });
+                const dayInt = parseInt(day);
+                if (shifts.AM.isActive) {
+                    scheduleArray.push({
+                        dayOfWeek: dayInt,
+                        shift: 'AM',
+                        isActive: true,
+                        startTime: shifts.AM.start,
+                        endTime: shifts.AM.end
+                    });
+                }
+                if (shifts.PM.isActive) {
+                    scheduleArray.push({
+                        dayOfWeek: dayInt,
+                        shift: 'PM',
+                        isActive: true,
+                        startTime: shifts.PM.start,
+                        endTime: shifts.PM.end
+                    });
+                }
             });
 
             await api.put(`/users/${editingUser.id}/schedule`, { schedule: scheduleArray });
@@ -182,7 +231,7 @@ export default function UsersPage() {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
                         <div className="bg-indigo-600 px-6 py-4 flex justify-between items-center text-white">
-                            <h3 className="text-lg font-bold">Horario Semanal</h3>
+                            <h3 className="text-lg font-bold">Horario Semanal (Editable)</h3>
                             <button onClick={() => setScheduleModalOpen(false)} className="hover:bg-indigo-700 p-1 rounded">
                                 <X className="h-5 w-5" />
                             </button>
@@ -206,34 +255,46 @@ export default function UsersPage() {
                                     <tbody className="divide-y divide-gray-100">
                                         {DAYS.map((day) => (
                                             <tr key={day.id} className="hover:bg-gray-50">
-                                                <td className="px-4 py-2 font-medium text-gray-900">{day.name}</td>
-                                                <td className="px-4 py-2 text-center">
-                                                    <button
-                                                        onClick={() => toggleShift(day.id, 'AM')}
-                                                        className={`w-6 h-6 rounded border flex items-center justify-center mx-auto transition-colors ${scheduleMap[day.id]?.AM
-                                                                ? 'bg-blue-600 border-blue-600 text-white'
-                                                                : 'border-gray-300 text-transparent hover:border-blue-400'
-                                                            }`}
-                                                    >
-                                                        <Check className="h-4 w-4" />
-                                                    </button>
-                                                </td>
-                                                <td className="px-4 py-2 text-center">
-                                                    {day.id !== 6 ? (
-                                                        <button
-                                                            onClick={() => toggleShift(day.id, 'PM')}
-                                                            className={`w-6 h-6 rounded border flex items-center justify-center mx-auto transition-colors ${scheduleMap[day.id]?.PM
-                                                                    ? 'bg-indigo-600 border-indigo-600 text-white'
-                                                                    : 'border-gray-300 text-transparent hover:border-indigo-400'
-                                                                }`}
-                                                        >
-                                                            <Check className="h-4 w-4" />
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-gray-300">-</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-2 text-center">
+                                                <td className="px-4 py-2 font-medium text-gray-900 align-top pt-4">{day.name}</td>
+                                                {['AM', 'PM'].map(shift => {
+                                                    if (day.id === 6 && shift === 'PM') return <td key="PM" className="px-4 py-2 text-center align-top pt-4"><span className="text-gray-300">-</span></td>;
+
+                                                    const isActive = scheduleMap[day.id]?.[shift]?.isActive;
+
+                                                    return (
+                                                        <td key={shift} className="px-4 py-2">
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                <button
+                                                                    onClick={() => toggleShift(day.id, shift)}
+                                                                    className={`w-6 h-6 rounded border flex items-center justify-center transition-colors ${isActive
+                                                                        ? 'bg-blue-600 border-blue-600 text-white'
+                                                                        : 'border-gray-300 text-transparent hover:border-blue-400'
+                                                                        }`}
+                                                                >
+                                                                    <Check className="h-4 w-4" />
+                                                                </button>
+
+                                                                {isActive && (
+                                                                    <div className="flex flex-col gap-1 mt-1">
+                                                                        <input
+                                                                            type="time"
+                                                                            className="text-xs border rounded px-1 py-0.5 w-20 text-center"
+                                                                            value={scheduleMap[day.id][shift].start}
+                                                                            onChange={(e) => updateTime(day.id, shift, 'start', e.target.value)}
+                                                                        />
+                                                                        <input
+                                                                            type="time"
+                                                                            className="text-xs border rounded px-1 py-0.5 w-20 text-center"
+                                                                            value={scheduleMap[day.id][shift].end}
+                                                                            onChange={(e) => updateTime(day.id, shift, 'end', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                })}
+                                                <td className="px-4 py-2 text-center align-top pt-4">
                                                     <button
                                                         onClick={() => toggleDay(day.id)}
                                                         className="text-xs text-blue-600 hover:underline"

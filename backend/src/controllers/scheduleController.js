@@ -53,7 +53,9 @@ async function updateSchedule(req, res) {
                         userId,
                         dayOfWeek: item.dayOfWeek,
                         shift: item.shift,
-                        isActive: item.isActive ?? true
+                        isActive: item.isActive ?? true,
+                        startTime: item.startTime || null,
+                        endTime: item.endTime || null
                     }))
                 });
             }
