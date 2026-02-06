@@ -28,10 +28,17 @@ export const useAuthStore = create(
                 return data.data;
             },
 
-            logout: () => {
-                // Limpiar estado y redirigir (cookie se limpiará automáticamente al expirar)
-                set({ user: null });
-                window.location.href = '/';
+            logout: async () => {
+                try {
+                    // Llamar endpoint de logout para invalidar cookie y auditar
+                    await api.post('/auth/logout');
+                } catch (error) {
+                    console.error('Logout error:', error);
+                } finally {
+                    // Limpiar estado y redirigir
+                    set({ user: null });
+                    window.location.href = '/';
+                }
             },
 
             fetchMe: async () => {

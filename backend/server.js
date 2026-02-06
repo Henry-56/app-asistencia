@@ -7,7 +7,7 @@ const cookieParser = require('cookie-parser');
 const { generalLimiter } = require('./src/middleware/rateLimiter');
 
 // Importar CRON jobs (se iniciarán automáticamente)
-// require('./src/jobs/absence-marker');
+require('./src/jobs/absence-marker');
 
 const app = express();
 

@@ -152,9 +152,46 @@ async function getAllUsers(req, res) {
     }
 }
 
+/**
+ * POST /api/auth/logout
+ * Logout con invalidación de cookie y auditoría
+ */
+async function logout(req, res) {
+    try {
+        const userId = req.user.userId;
+
+        // Registrar logout en audit logs
+        await prisma.auditLog.create({
+            data: {
+                userId,
+                action: 'LOGOUT',
+                reason: 'User logout',
+                metadata: {
+                    timestamp: new Date().toISOString(),
+                    ip: req.ip
+                }
+            }
+        });
+
+        // Invalidar cookie
+        res.clearCookie('auth_token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        logger.info('Logout exitoso', { userId });
+        res.status(200).json({ success: true, message: 'Logout exitoso' });
+    } catch (error) {
+        logger.error('Error en logout', { error: error.message, stack: error.stack });
+        res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
+    }
+}
+
 module.exports = {
     register,
     login,
     getMe,
     getAllUsers,
+    logout,
 };
