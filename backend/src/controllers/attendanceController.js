@@ -3,6 +3,7 @@ const prisma = require('../config/prisma');
 const haversineDistance = require('../utils/haversine');
 const calcLateAndDiscount = require('../utils/calcLateAndDiscount');
 const { GPS_ACCURACY_THRESHOLD, TIMEZONE } = require('../config/constants');
+const logger = require('../config/logger');
 
 /**
  * POST /api/attendance/scan
@@ -189,14 +190,15 @@ async function scanQR(req, res) {
             parseFloat(qr.location.longitude)
         );
 
-        const TEST_RADIUS = 50000; // Keep test radius
-        if (distance > TEST_RADIUS) {
+        // Usar radiusMeters de la location (valor configurable por ubicación)
+        const allowedRadius = qr.location.radiusMeters;
+        if (distance > allowedRadius) {
             await logAudit(userId, qr.id, 'SCAN_FAIL', 'LOCATION_OUT_OF_RANGE', latitude, longitude, accuracy_m, req);
             return res.status(403).json({
                 error: 'LOCATION_OUT_OF_RANGE',
                 message: 'Está fuera del área permitida',
                 distance_meters: Math.round(distance),
-                max_allowed: TEST_RADIUS
+                max_allowed: allowedRadius
             });
         }
 
@@ -322,7 +324,12 @@ async function scanQR(req, res) {
         }
 
     } catch (error) {
-        console.error('Error en scanQR:', error);
+        logger.error('Error en scanQR', {
+            error: error.message,
+            stack: error.stack,
+            userId: req.user?.userId,
+            qrToken: req.body?.qr_token
+        });
         await logAudit(userId, null, 'SCAN_FAIL', 'SERVER_ERROR', latitude, longitude, accuracy_m, req);
         return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
@@ -362,7 +369,11 @@ async function getMyRecords(req, res) {
             records,
         });
     } catch (error) {
-        console.error('Error en getMyRecords:', error);
+        logger.error('Error en getMyRecords', {
+            error: error.message,
+            stack: error.stack,
+            userId: req.user?.userId
+        });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -428,7 +439,7 @@ async function getAllRecords(req, res) {
             records: formattedRecords,
         });
     } catch (error) {
-        console.error('Error en getAllRecords:', error);
+        logger.error('Error en getAllRecords', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -450,7 +461,7 @@ async function logAudit(userId, qrId, action, reason, lat, lng, accuracy, req) {
             },
         });
     } catch (error) {
-        console.error('Error al crear audit log:', error);
+        logger.error('Error al crear audit log', { error: error.message, stack: error.stack });
     }
 }
 
@@ -499,7 +510,11 @@ async function justifyAttendance(req, res) {
         res.json({ success: true, message: 'Asistencia justificada correctamente', data: updated });
 
     } catch (error) {
-        console.error('Error justifying attendance:', error);
+        logger.error('Error justifying attendance', {
+            error: error.message,
+            stack: error.stack,
+            recordId: req.body?.recordId
+        });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }

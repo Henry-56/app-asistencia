@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const logger = require('../config/logger');
 
 /**
  * GET /api/users/:userId/schedule
@@ -18,7 +19,7 @@ async function getSchedule(req, res) {
             data: schedule
         });
     } catch (error) {
-        console.error('Error getting schedule:', error);
+        logger.error('Error getting schedule', { error: error.message, stack: error.stack, userId: req.params.userId });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -64,7 +65,7 @@ async function updateSchedule(req, res) {
         res.json({ success: true, message: 'Schedule updated successfully' });
 
     } catch (error) {
-        console.error('Error updating schedule:', error);
+        logger.error('Error updating schedule', { error: error.message, stack: error.stack, userId: req.params.userId });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }

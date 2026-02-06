@@ -5,13 +5,14 @@ const { verifyToken } = require('../services/authService');
  */
 function authenticate(req, res, next) {
     try {
-        const authHeader = req.headers.authorization;
+        // Leer token desde cookie (preferido) o header Authorization (fallback)
+        const token = req.cookies.auth_token ||
+                      (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.substring(7) : null);
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!token) {
             return res.status(401).json({ error: 'NO_TOKEN_PROVIDED' });
         }
 
-        const token = authHeader.substring(7);
         const decoded = verifyToken(token);
 
         req.user = decoded; // { userId, email, role }

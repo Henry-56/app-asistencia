@@ -1,5 +1,6 @@
 const authService = require('../services/authService');
 const { PrismaClient } = require('@prisma/client');
+const logger = require('../config/logger');
 const prisma = new PrismaClient();
 
 /**
@@ -42,7 +43,7 @@ async function register(req, res) {
             },
         });
     } catch (error) {
-        console.error('Error en register:', error);
+        logger.error('Error en register', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -71,10 +72,18 @@ async function login(req, res) {
 
         const result = await authService.login(login_code);
 
+        // Enviar token como httpOnly cookie en lugar de en el body
+        res.cookie('auth_token', result.token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 días
+        });
+
         res.status(200).json({
             success: true,
-            token: result.token,
             user: result.user,
+            // NO enviar token en body por seguridad
         });
     } catch (error) {
         if (error.message === 'INVALID_CODE') {
@@ -89,7 +98,7 @@ async function login(req, res) {
                 message: 'Usuario inactivo'
             });
         }
-        console.error('Error en login:', error);
+        logger.error('Error en login', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -110,7 +119,7 @@ async function getMe(req, res) {
         if (error.message === 'USER_NOT_FOUND') {
             return res.status(404).json({ error: 'USER_NOT_FOUND' });
         }
-        console.error('Error en getMe:', error);
+        logger.error('Error en getMe', { error: error.message, stack: error.stack, userId: req.user?.userId });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -138,7 +147,7 @@ async function getAllUsers(req, res) {
 
         res.status(200).json(users);
     } catch (error) {
-        console.error('Error en getAllUsers:', error);
+        logger.error('Error en getAllUsers', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', details: error.message });
     }
 }

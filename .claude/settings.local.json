@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/update-locations.js:*)",
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(timeout 3 type:*)",
+      "Bash(pip install:*)",
+      "Bash(node scripts/verify-production.js:*)",
+      "Bash(node scripts/generate-jwt-secret.js:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

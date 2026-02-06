@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
+const cookieParser = require('cookie-parser');
 const { generalLimiter } = require('./src/middleware/rateLimiter');
 
 // Importar CRON jobs (se iniciarán automáticamente)
@@ -16,8 +17,18 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(helmet());
 app.use(compression());
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+
+// CORS seguro - Restringir a dominios específicos
+const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : ['http://localhost:5173'];
+app.use(cors({
+    origin: allowedOrigins,
+    credentials: true
+}));
+
 app.use(express.json());
+app.use(cookieParser());
 app.use(generalLimiter);
 
 // Log de requests en desarrollo
@@ -56,8 +67,20 @@ app.use((req, res) => {
 
 // Manejo global de errores
 app.use((err, req, res, next) => {
-    console.error('Error no manejado:', err);
-    res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: err.message });
+    const logger = require('./src/config/logger');
+    logger.error('Error no manejado', {
+        error: err.message,
+        stack: err.stack,
+        url: req.url,
+        method: req.method
+    });
+
+    // NO exponer detalles internos en producción
+    const message = process.env.NODE_ENV === 'production'
+        ? 'Error interno del servidor'
+        : err.message;
+
+    res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message });
 });
 
 const PORT = process.env.PORT || 3000;

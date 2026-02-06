@@ -2,6 +2,7 @@ const moment = require('moment-timezone');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { TIMEZONE } = require('../config/constants');
+const logger = require('../config/logger');
 
 /**
  * GET /api/reports/range
@@ -105,7 +106,7 @@ async function getRangeStats(req, res) {
         res.json({ success: true, data: stats });
 
     } catch (error) {
-        console.error('Error in getRangeStats:', error);
+        logger.error('Error in getRangeStats', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -213,7 +214,7 @@ async function getDailyDetail(req, res) {
         res.json({ success: true, data: report });
 
     } catch (error) {
-        console.error('Error in getDailyDetail:', error);
+        logger.error('Error in getDailyDetail', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
@@ -258,7 +259,7 @@ async function getDashboardStats(req, res) {
         });
 
     } catch (error) {
-        console.error('Error in getDashboardStats:', error);
+        logger.error('Error in getDashboardStats', { error: error.message, stack: error.stack });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }

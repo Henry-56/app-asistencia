@@ -36,7 +36,7 @@ module.exports = {
     },
 
     // Límite de accuracy GPS (metros)
-    GPS_ACCURACY_THRESHOLD: 50000, // Forzando para pruebas (ignora .env)
+    GPS_ACCURACY_THRESHOLD: parseInt(process.env.GPS_ACCURACY_THRESHOLD_M || '50', 10),
 
     // Zona horaria
     TIMEZONE: 'America/Lima',

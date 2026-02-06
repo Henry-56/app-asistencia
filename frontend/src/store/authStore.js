@@ -6,7 +6,6 @@ export const useAuthStore = create(
     persist(
         (set) => ({
             user: null,
-            token: null,
             loading: false,
 
             login: async (loginCode) => {
@@ -14,8 +13,8 @@ export const useAuthStore = create(
                 try {
                     const { data } = await api.post('/auth/login', { login_code: loginCode });
 
-                    localStorage.setItem('auth_token', data.token);
-                    set({ user: data.user, token: data.token, loading: false });
+                    // Token ahora viene en httpOnly cookie, no en response body
+                    set({ user: data.user, loading: false });
 
                     return data.user;
                 } catch (error) {
@@ -30,8 +29,8 @@ export const useAuthStore = create(
             },
 
             logout: () => {
-                localStorage.removeItem('auth_token');
-                set({ user: null, token: null });
+                // Limpiar estado y redirigir (cookie se limpiará automáticamente al expirar)
+                set({ user: null });
                 window.location.href = '/';
             },
 
@@ -42,14 +41,13 @@ export const useAuthStore = create(
                     set({ user: data.user, loading: false });
                 } catch (error) {
                     console.error('FetchMe Error:', error);
-                    set({ user: null, token: null, loading: false });
-                    localStorage.removeItem('auth_token');
+                    set({ user: null, loading: false });
                 }
             },
         }),
         {
             name: 'auth-storage',
-            partialize: (state) => ({ user: state.user, token: state.token }),
+            partialize: (state) => ({ user: state.user }),
         }
     )
 );

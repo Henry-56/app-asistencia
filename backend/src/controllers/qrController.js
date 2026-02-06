@@ -3,6 +3,7 @@ const QRCode = require('qrcode');
 const prisma = require('../config/prisma');
 const { SCAN_WINDOWS, TIMEZONE } = require('../config/constants');
 const { v4: uuidv4 } = require('uuid');
+const logger = require('../config/logger');
 
 
 
@@ -56,7 +57,7 @@ async function getOrCreateFixedQR(req, res) {
         });
 
     } catch (error) {
-        console.error('Error in getOrCreateFixedQR:', error);
+        logger.error('Error in getOrCreateFixedQR', { error: error.message, stack: error.stack, shift: req.body?.shift });
         res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
 }
