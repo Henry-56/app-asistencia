@@ -8,7 +8,10 @@
       "Bash(pip install:*)",
       "Bash(node scripts/verify-production.js:*)",
       "Bash(node scripts/generate-jwt-secret.js:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

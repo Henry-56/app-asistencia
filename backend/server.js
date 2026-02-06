@@ -85,8 +85,14 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
-    console.log(`📅 Zona horaria: America/Lima`);
-    console.log(`🔒 Modo: ${process.env.NODE_ENV || 'development'}`);
-});
+// Solo iniciar servidor si se ejecuta directamente (no en tests)
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+        console.log(`📅 Zona horaria: America/Lima`);
+        console.log(`🔒 Modo: ${process.env.NODE_ENV || 'development'}`);
+    });
+}
+
+// Exportar app para tests
+module.exports = app;
