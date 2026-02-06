@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Inicializar Sentry PRIMERO (antes de require express)
+const { Sentry, initSentry } = require('./src/config/sentry');
+const sentryConfig = initSentry();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -26,6 +31,12 @@ app.use(cors({
     origin: allowedOrigins,
     credentials: true
 }));
+
+// Sentry request handler (debe ir antes de las rutas)
+if (sentryConfig.enabled) {
+    app.use(Sentry.Handlers.requestHandler());
+    app.use(Sentry.Handlers.tracingHandler());
+}
 
 app.use(express.json());
 app.use(cookieParser());
@@ -64,6 +75,11 @@ app.get('/', (req, res) => {
 app.use((req, res) => {
     res.status(404).json({ error: 'NOT_FOUND', message: 'Ruta no encontrada' });
 });
+
+// Sentry error handler (debe ir antes del error handler custom)
+if (sentryConfig.enabled) {
+    app.use(Sentry.Handlers.errorHandler());
+}
 
 // Manejo global de errores
 app.use((err, req, res, next) => {

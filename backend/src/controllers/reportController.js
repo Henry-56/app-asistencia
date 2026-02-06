@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { TIMEZONE } = require('../config/constants');
 const logger = require('../config/logger');
+const cache = require('../services/cache');
 
 /**
  * GET /api/reports/range
