@@ -27,9 +27,8 @@ const scanLimiter = rateLimit({
  * Rate limiter para login
  */
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 10, // 10 intentos de login
-    message: { error: 'TOO_MANY_REQUESTS', message: 'Demasiados intentos de login' },
+    windowMs: 15 * 60 * 1000,
+    max: 0, // Sin límite
     standardHeaders: true,
     legacyHeaders: false,
 });
