@@ -9,7 +9,13 @@
  */
 
 const Sentry = require("@sentry/node");
-const { nodeProfilingIntegration } = require("@sentry/profiling-node");
+
+let nodeProfilingIntegration;
+try {
+    nodeProfilingIntegration = require("@sentry/profiling-node").nodeProfilingIntegration;
+} catch (e) {
+    console.log('ℹ️  @sentry/profiling-node no disponible (bindings nativos no compilados)');
+}
 
 /**
  * Inicializar Sentry
@@ -33,9 +39,9 @@ function initSentry() {
 
             // Profiling
             profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-            integrations: [
-                nodeProfilingIntegration(),
-            ],
+            integrations: nodeProfilingIntegration
+                ? [nodeProfilingIntegration()]
+                : [],
 
             // Configuración adicional
             beforeSend(event) {

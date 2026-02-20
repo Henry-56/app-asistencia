@@ -103,7 +103,7 @@ const PORT = process.env.PORT || 3000;
 
 // Solo iniciar servidor si se ejecuta directamente (no en tests)
 if (require.main === module) {
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
         console.log(`📅 Zona horaria: America/Lima`);
         console.log(`🔒 Modo: ${process.env.NODE_ENV || 'development'}`);

@@ -73,10 +73,11 @@ async function login(req, res) {
         const result = await authService.login(login_code);
 
         // Enviar token como httpOnly cookie en lugar de en el body
+        const isProduction = process.env.NODE_ENV === 'production';
         res.cookie('auth_token', result.token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'strict',
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 días
         });
 
@@ -174,10 +175,11 @@ async function logout(req, res) {
         });
 
         // Invalidar cookie
+        const isProduction = process.env.NODE_ENV === 'production';
         res.clearCookie('auth_token', {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict'
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'strict'
         });
 
         logger.info('Logout exitoso', { userId });
