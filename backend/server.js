@@ -25,8 +25,9 @@ app.use(compression());
 
 // CORS seguro - Restringir a dominios específicos
 const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',')
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
     : ['http://localhost:5173'];
+console.log('🌐 CORS Origins permitidos:', allowedOrigins);
 app.use(cors({
     origin: allowedOrigins,
     credentials: true
