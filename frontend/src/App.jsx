@@ -15,9 +15,9 @@ const FixedQRPage = lazy(() => import('./pages/FixedQRPage'));
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = [] }) {
-  const { user, token } = useAuthStore();
+  const { user } = useAuthStore();
 
-  if (!token || !user) {
+  if (!user) {
     return <Navigate to="/" replace />;
   }
 
@@ -36,13 +36,11 @@ const LoadingFallback = () => (
 );
 
 function App() {
-  const { token, fetchMe, loading } = useAuthStore();
+  const { fetchMe, loading } = useAuthStore();
 
   useEffect(() => {
-    if (token) {
-      fetchMe();
-    }
-  }, [token, fetchMe]);
+    fetchMe();
+  }, [fetchMe]);
 
   if (loading) {
     return <LoadingFallback />;

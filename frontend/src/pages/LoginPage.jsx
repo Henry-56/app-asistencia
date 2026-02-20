@@ -20,10 +20,10 @@ export default function LoginPage() {
         setSelectedRole(role);
         setStep('login');
 
-        // Auto-fill credenciales de prueba
+        // Auto-fill credenciales reales
         if (role === 'ADMIN') setLoginCode('ADM1');
-        else if (role === 'PRACTICANTE') setLoginCode('PRA1');
-        else if (role === 'COLABORADOR') setLoginCode('COL1');
+        else if (role === 'PRACTICANTE') setLoginCode('Q4XQ');
+        else if (role === 'COLABORADOR') setLoginCode('UGJI');
     };
 
     const handleLogin = async (e) => {
